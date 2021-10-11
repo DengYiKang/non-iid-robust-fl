@@ -1,0 +1,5 @@
+#!/bin/bash
+for((i=320; i<=400; i++))
+do
+python ./encoder_data_gen.py --epochs 1 --local_ep 40 --local_bs 32 --num_users 100 --index $i
+done
