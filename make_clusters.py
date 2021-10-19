@@ -6,16 +6,25 @@ import copy  # 用于联邦学习全局模型的复制过程
 from torchvision import datasets, transforms
 
 import preprocess
-from utils.sampling import mnist_iid, mnist_noniid, cifar_iid, mnist_noniid_only_one_class
+from utils.sampling import mnist_iid, mnist_noniid_more_classes, cifar_iid, mnist_noniid_only_one_class
 from utils.options import args_parser
 from models.Update import LocalUpdate
 from models.Nets import MLP, CNNMnist, CNNCifar
 
+index = 0
 
-def one_class_data_gen(args, dataset_train):
+
+def model_gen(args, dataset_train, cls_list):
+    """
+    生成模型
+    :param args:
+    :param dataset_train:
+    :param cls_list:
+    :return: dict_users为用户数据集的划分，字典，dict_users[idx]为训练数据的索引集合，net_glob为网络
+    """
     img_size = dataset_train[0][0].shape
     if args.dataset == 'mnist':
-        dict_users = mnist_noniid_only_one_class(dataset_train, args.num_users, args.class_idx)
+        dict_users = mnist_noniid_more_classes(dataset_train, args.num_users, cls_list, args.train_size)
     elif args.dataset == 'cifar':
         if args.iid:
             dict_users = cifar_iid(dataset_train, args.num_users)
@@ -33,6 +42,18 @@ def one_class_data_gen(args, dataset_train):
         net_glob = MLP(dim_in=len_in, dim_hidden=50, dim_out=args.num_classes).to(args.device)
     else:
         exit('Error: unrecognized model')
+    return dict_users, net_glob
+
+
+def do_train(args, dataset_train, dict_users, net_glob):
+    """
+    训练
+    :param args:
+    :param dataset_train:
+    :param dict_users:
+    :param net_glob:
+    :return:
+    """
     print(net_glob)
     # training
     net_glob.train()
@@ -55,10 +76,17 @@ def one_class_data_gen(args, dataset_train):
     for w in w_locals:
         encoded, decoded = ae_net(w.cuda())
         features.append(encoded)
-    torch.save(features, './save/data/kmeans/input/' + str(args.class_idx) + '.pt')
+    torch.save(features, './save/data/kmeans/input/' + str(args.index) + '.pt')
+    args.index += 1
 
 
-def data_gen(args):
+def get_dataset(args):
+    """
+    获取训练集
+    :param args:
+    :return:
+    """
+    dataset_train = None
     if args.dataset == 'mnist':
         trans_mnist = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
         dataset_train = datasets.MNIST('./data/mnist/', train=True, download=True, transform=trans_mnist)
@@ -66,28 +94,40 @@ def data_gen(args):
         trans_cifar = transforms.Compose(
             [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
         dataset_train = datasets.CIFAR10('./data/cifar', train=True, download=True, transform=trans_cifar)
-    else:
-        exit('Error: unrecognized mydataset')
-    for i in range(10):
-        args.class_idx = i
-        one_class_data_gen(args, dataset_train)
+    return dataset_train
 
 
-def union():
+def data_gen(args, cls_list, dataset_train):
+    dict_users, net_glob = model_gen(args, dataset_train, cls_list)
+    do_train(args, dataset_train, dict_users, net_glob)
+
+
+def union(name):
+    """
+    将小文件合并
+    :param name:
+    :return:
+    """
     files = preprocess.walkFile('./save/data/kmeans/input/')
     data = []
     for f in files:
         data.extend(torch.load(f))
-    torch.save(data, './save/data/kmeans/tot/8_per_class.pt')
+    torch.save(data, './save/data/kmeans/tot/' + name + '.pt')
 
 
-def make_clusters():
-    data = torch.load('./save/data/kmeans/tot/8_per_class.pt')
+def make_clusters(k, name):
+    """
+    聚类
+    :param k: k个簇
+    :param name:
+    :return:
+    """
+    data = torch.load('./save/data/kmeans/tot/' + name + '.pt')
     for i in range(len(data)):
         data[i] = data[i].cpu().tolist()
     t = [token for term in data for token in term]
     X = np.array(t)
-    kmeans = KMeans(n_clusters=10).fit(X)
+    kmeans = KMeans(n_clusters=k).fit(X)
     print(kmeans.labels_)
 
 
@@ -98,8 +138,14 @@ if __name__ == '__main__':
     args.local_ep = 50
     args.epochs = 1
     args.num_users = 8
+    # args.classes=[[1, 2], [3, 4]]表示分为两大客户端群，一个拥有1、2两个类的数据，另一个拥有3、4两个类的数据
+    args.classes = [[1, 2, 3], [2, 3, 4, 5], [6], [1], [9, 0]]
+    args.index = 1
+    args.train_size = 600
     args.device = torch.device(
         'cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
-    # data_gen(args)
-    # union()
-    make_clusters()
+    dataset_train = get_dataset(args)
+    for cls_list in args.classes:
+        data_gen(args, cls_list, dataset_train)
+    union('mess')
+    make_clusters(len(args.classes), 'mess')

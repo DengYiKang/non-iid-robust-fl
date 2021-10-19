@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # Python version: 3.6
-
+import random
 
 import numpy as np
 from torchvision import datasets, transforms
@@ -48,6 +48,37 @@ def mnist_noniid(dataset, num_users):
         idx_shard = list(set(idx_shard) - rand_set)
         for rand in rand_set:
             dict_users[i] = np.concatenate((dict_users[i], idxs[rand * num_imgs:(rand + 1) * num_imgs]), axis=0)
+    return dict_users
+
+
+def mnist_noniid_more_classes(dataset, num_users, class_list, train_size):
+    """
+
+    :param dataset:
+    :param num_users:
+    :param class_list:[1, 2]表示拥有1、2两个类的数据
+    :param train_size:训练集的大小
+    :return:
+    """
+    dict_users = {i: np.array([], dtype='int64') for i in range(num_users)}
+    idxs = np.arange(60000)
+    labels = dataset.train_labels.numpy()
+
+    # sort labels
+    idxs_labels = np.vstack((idxs, labels))
+    idxs_labels = idxs_labels[:, idxs_labels[1, :].argsort()]
+    # idxs为按照label排好序后的索引
+    idxs = idxs_labels[0, :]
+
+    for i in range(num_users):
+        num_imgs = int(train_size / len(class_list))
+        num_shards = 6000 / num_imgs
+        for cls in class_list:
+            offset = cls * 6000
+            rand = random.randint(0, num_shards)
+            dict_users[i] = np.concatenate(
+                (dict_users[i], idxs[offset + rand * num_imgs:offset + (rand + 1) * num_imgs]),
+                axis=0)
     return dict_users
 
 
