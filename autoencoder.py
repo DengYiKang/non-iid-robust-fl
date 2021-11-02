@@ -10,8 +10,8 @@ from models.Nets import AE
 if __name__ == '__main__':
     args = args_parser()
     args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
-    dataset_train = AE_DATASET.AETrainDataSet(args)
-    dataset_test = AE_DATASET.AETestDataSet(args)
+    dataset_train = AE_DATASET.AETrainDataSet(args, './model/data/encoder/train/size_32k_standard.pt')
+    dataset_test = AE_DATASET.AETestDataSet(args, './model/data/encoder/test/size_8k_standard.pt')
     train_loader = DataLoader(dataset_train, batch_size=5, shuffle=True)
     test_loader = DataLoader(dataset_test, batch_size=10, shuffle=True)
     ae_net = AE().to(args.device)
@@ -37,4 +37,4 @@ if __name__ == '__main__':
         test_loss += tmp
     test_loss /= len(test_loader)
     print('average loss:%.4f' % test_loss)
-    torch.save(ae_net, './save/data/encoder/model/size_{}_loss_{}.pkl'.format(len(dataset_train), test_loss))
+    torch.save(ae_net, './model/data/encoder/model/size_{}_loss_{}.pkl'.format(len(dataset_train), test_loss))

@@ -1,12 +1,13 @@
+import os
+
 import numpy as np
 import torch
 from sklearn.cluster import KMeans
-import matplotlib.pyplot as plt
 import copy  # 用于联邦学习全局模型的复制过程
 from torchvision import datasets, transforms
 
-import preprocess
-from utils.sampling import mnist_iid, mnist_noniid_more_classes, cifar_iid, mnist_noniid_only_one_class
+from utils import preprocess
+from utils.sampling import mnist_noniid_more_classes, cifar_iid
 from utils.options import args_parser
 from models.Update import LocalUpdate
 from models.Nets import MLP, CNNMnist, CNNCifar
@@ -45,13 +46,14 @@ def model_gen(args, dataset_train, cls_list):
     return dict_users, net_glob
 
 
-def do_train(args, dataset_train, dict_users, net_glob):
+def do_train(args, dataset_train, dict_users, net_glob, ae_model_path):
     """
     训练
     :param args:
     :param dataset_train:
     :param dict_users:
     :param net_glob:
+    :param ae_model_path:
     :return:
     """
     print(net_glob)
@@ -71,7 +73,7 @@ def do_train(args, dataset_train, dict_users, net_glob):
         loss_per_client[idx].append(loss)
         w_locals.append(copy.deepcopy(w)[kind].view(1, -1))
         print('round {:3d} client {:3d}, loss {:.3f}'.format(args.index, idx, loss))
-    ae_net = torch.load('./save/data/encoder/model/size_32000_loss_0.23777720568701624.pkl').cuda()
+    ae_net = torch.load(ae_model_path).cuda()
     features = []
     for w in w_locals:
         encoded, decoded = ae_net(w.cuda())
@@ -99,7 +101,8 @@ def get_dataset(args):
 
 def data_gen(args, cls_list, dataset_train):
     dict_users, net_glob = model_gen(args, dataset_train, cls_list)
-    do_train(args, dataset_train, dict_users, net_glob)
+    ae_model_path = './anomaly_detection/model/size_19360_loss_0.055556668126416846.pkl'
+    do_train(args, dataset_train, dict_users, net_glob, ae_model_path)
 
 
 def union(name):
@@ -113,6 +116,15 @@ def union(name):
     for f in files:
         data.extend(torch.load(f))
     torch.save(data, './save/data/kmeans/tot/' + name + '.pt')
+
+
+def clean(path):
+    for root, dirs, files in os.walk(path):
+        # 遍历文件
+        for f in files:
+            file_path = os.path.join(root, f)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
 
 
 def make_clusters(k, name):
@@ -129,10 +141,12 @@ def make_clusters(k, name):
     X = np.array(t)
     kmeans = KMeans(n_clusters=k).fit(X)
     print(kmeans.labels_)
+    clean('./save/data/kmeans/input/')
+    clean('./save/data/kmeans/tot/')
 
 
 if __name__ == '__main__':
-    # data = torch.load('./save/data/kmeans/input')
+    # data = torch.load('./model/data/kmeans/input')
     args = args_parser()
     args.local_bs = 32
     args.local_ep = 50

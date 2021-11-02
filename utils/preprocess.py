@@ -21,26 +21,26 @@ def walkFile(file):
         return file_list
 
 
-def union():
-    files = walkFile("./save/data/encoder/input")
+def union(input_path, tot_path):
+    files = walkFile(input_path)
     data = []
     for f in files:
         data.extend(torch.load(f))
-    torch.save(data, './save/data/encoder/tot/size_40k.pt')
+    torch.save(data, tot_path)
 
 
-def split():
-    data = torch.load('./save/data/encoder/tot/size_40k.pt')
+def split(tot_path, train_path, test_path):
+    data = torch.load(tot_path)
     offset = int(0.8 * len(data))
     random.shuffle(data)
     train = data[:offset]
     test = data[offset:]
-    torch.save(train, './save/data/encoder/train/size_32k.pt')
-    torch.save(test, './save/data/encoder/test/size_8k.pt')
+    torch.save(train, train_path)
+    torch.save(test, test_path)
 
 
-def cal_standard():
-    data = torch.load('./save/data/encoder/tot/size_40k.pt')
+def cal_standard(tot_path):
+    data = torch.load(tot_path)
     t = data[0]
     t.cuda()
     for idx, item in enumerate(data):
@@ -52,19 +52,19 @@ def cal_standard():
     return mean, std
 
 
-def standard(mean, std):
-    train_data = torch.load('./save/data/encoder/train/size_32k.pt')
-    test_data = torch.load('./save/data/encoder/test/size_8k.pt')
+def standard(mean, std, train_path, test_path, train_standard_path, test_standard_path):
+    train_data = torch.load(train_path)
+    test_data = torch.load(test_path)
     for idx in range(len(train_data)):
         train_data[idx] = (train_data[idx].cuda() - mean) / std
     for idx in range(len(test_data)):
         test_data[idx] = (test_data[idx].cuda() - mean) / std
-    torch.save(train_data, './save/data/encoder/train/size_32k_standard.pt')
-    torch.save(test_data, './save/data/encoder/test/size_8k_standard.pt')
+    torch.save(train_data, train_standard_path)
+    torch.save(test_data, test_standard_path)
 
 
-if __name__ == '__main__':
-    union()
-    split()
-    mean, std = cal_standard()
-    standard(mean.cuda(), std.cuda())
+def preprocess(input_path, tot_path, train_path, test_path, train_standard_path, test_standard_path):
+    union(input_path, tot_path)
+    split(tot_path, train_path, test_path)
+    mean, std = cal_standard(tot_path)
+    standard(mean, std, train_path, test_path, train_standard_path, test_standard_path)

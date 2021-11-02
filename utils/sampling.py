@@ -56,7 +56,7 @@ def mnist_noniid_more_classes(dataset, num_users, class_list, train_size):
 
     :param dataset:
     :param num_users:
-    :param class_list:[1, 2]表示拥有1、2两个类的数据
+    :param class_list:[1, 2]表示拥有1、2两个类的数据，元素取值范围：0~9
     :param train_size:训练集的大小
     :return:
     """

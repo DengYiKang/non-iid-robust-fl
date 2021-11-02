@@ -105,7 +105,7 @@ if __name__ == '__main__':
     plt.figure()
     plt.plot(range(len(loss_train)), loss_train)
     plt.ylabel('train_loss')
-    plt.savefig('./save/fed_{}_{}_{}_C{}_iid{}.svg'.format(args.mydataset, args.model, args.epochs, args.frac, args.iid))
+    plt.savefig('./model/fed_{}_{}_{}_C{}_iid{}.svg'.format(args.mydataset, args.model, args.epochs, args.frac, args.iid))
 
     # plot local loss curve
     # for client_id, loss_list in loss_per_client.items():
@@ -114,12 +114,12 @@ if __name__ == '__main__':
     #     plt.ylabel('train_loss')
     #     if args.iid:
     #         plt.savefig(
-    #             './save/local/iid/client_{}_{}_{}_{}_C{}_iid{}.svg'.format(client_id, args.mydataset, args.model,
+    #             './model/local/iid/client_{}_{}_{}_{}_C{}_iid{}.svg'.format(client_id, args.mydataset, args.model,
     #                                                                        args.epochs,
     #                                                                        args.frac, args.iid))
     #     else:
     #         plt.savefig(
-    #             './save/local/non-iid/client_{}_{}_{}_{}_C{}_iid{}.svg'.format(client_id, args.mydataset, args.model,
+    #             './model/local/non-iid/client_{}_{}_{}_{}_C{}_iid{}.svg'.format(client_id, args.mydataset, args.model,
     #                                                                            args.epochs,
     #                                                                            args.frac, args.iid))
     #     plt.close()
@@ -146,7 +146,7 @@ if __name__ == '__main__':
     #     plt.ylim(0.04, 0.10)
     #     plt.scatter(x[i], y[i])
     #     plt.savefig(
-    #         './save/local/weight/non-iid/kind_{}_{}_{}_{}_iid{}.svg'.format(i, args.mydataset, args.model,
+    #         './model/local/weight/non-iid/kind_{}_{}_{}_{}_iid{}.svg'.format(i, args.mydataset, args.model,
     #                                                                         args.local_ep, args.iid))
     #     plt.close()
     # testing

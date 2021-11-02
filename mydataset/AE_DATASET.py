@@ -4,8 +4,9 @@ from torch.utils.data.dataset import Dataset, T_co
 
 class AETrainDataSet(Dataset):
 
-    def __init__(self, args) -> None:
-        self.data = torch.load('./save/data/encoder/train/size_32k_standard.pt')
+    def __init__(self, args, dataset) -> None:
+        # self.data = torch.load('./model/data/encoder/train/size_32k_standard.pt')
+        self.data = torch.load(dataset)
         self.args = args
 
     def __getitem__(self, index) -> T_co:
@@ -17,8 +18,9 @@ class AETrainDataSet(Dataset):
 
 class AETestDataSet(Dataset):
 
-    def __init__(self, args) -> None:
-        self.data = torch.load('./save/data/encoder/test/size_8k_standard.pt')
+    def __init__(self, args, dataset) -> None:
+        # self.data = torch.load('./model/data/encoder/test/size_8k_standard.pt')
+        self.data = torch.load(dataset)
         self.args = args
 
     def __getitem__(self, index) -> T_co:
