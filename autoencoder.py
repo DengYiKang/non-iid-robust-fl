@@ -48,4 +48,4 @@ if __name__ == '__main__':
         test_loss += tmp
     test_loss /= len(test_loader)
     print('average loss:%.4f' % test_loss)
-    # torch.save(ae_net, './model/data/encoder/model/size_{}_loss_{}.pkl'.format(len(dataset_train), test_loss))
+    torch.save(ae_net, './model/data/encoder/model/size_{}_loss_{}.pkl'.format(len(dataset_train), test_loss))

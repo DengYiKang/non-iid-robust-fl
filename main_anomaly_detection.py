@@ -3,6 +3,8 @@ from torchvision import datasets, transforms
 import torch
 
 import utils
+import numpy as np
+import random
 import torch.nn.functional as F
 from anomaly_detection import train_data_gen
 from models.Nets import AE
@@ -28,6 +30,15 @@ def do_preprocess():
 
 
 if __name__ == '__main__':
+    # seed
+    seed = 10
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    random.seed(seed)
+    # args, dataset
     args = args_parser()
     args.train_size = 600
     args.device = torch.device(
@@ -36,14 +47,16 @@ if __name__ == '__main__':
     # do_preprocess()
     dataset_train = AE_DATASET.AETrainDataSet(args, './anomaly_detection/data/train/size24k_standard.pt')
     dataset_test = AE_DATASET.AETestDataSet(args, './anomaly_detection/data/test/size6k_standard.pt')
-    train_loader = DataLoader(dataset_train, batch_size=5, shuffle=True)
+    batch_size = 5
+    train_loader = DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(dataset_test, batch_size=10, shuffle=True)
     ae_net = AE().to(args.device)
     # train
     ae_net.train()
     optimizer = torch.optim.SGD(ae_net.parameters(), lr=args.lr, momentum=args.momentum)
     loss_func = torch.nn.MSELoss().to(args.device)
-    for epoch in range(100):
+    max_epochs = 100
+    for epoch in range(max_epochs):
         for batch_idx, item in enumerate(train_loader):
             optimizer.zero_grad()
             encoded, decoded = ae_net(item)
@@ -61,4 +74,9 @@ if __name__ == '__main__':
         test_loss += tmp
     test_loss /= len(test_loader)
     print('average loss:%.4f' % test_loss)
-    torch.save(ae_net, './anomaly_detection/model/size_{}_loss_{}.pkl'.format(len(dataset_train), test_loss))
+    state_dict = {"net": ae_net.state_dict(), "optimizer": optimizer.state_dict(), "epoch": max_epochs}
+    # torch.save(ae_net, './anomaly_detection/model/size_{}_loss_{}.pkl'.format(len(dataset_train), test_loss))
+    torch.save(state_dict,
+               './anomaly_detection/model/size_{}_batch_{}_seed_{}_loss_{:.3f}.pth'.format(len(dataset_train),
+                                                                                           batch_size, seed,
+                                                                                           test_loss))
