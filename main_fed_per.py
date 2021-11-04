@@ -105,7 +105,8 @@ if __name__ == '__main__':
     plt.figure()
     plt.plot(range(len(loss_train)), loss_train)
     plt.ylabel('train_loss')
-    plt.savefig('./model/fed_{}_{}_{}_C{}_iid{}.svg'.format(args.mydataset, args.model, args.epochs, args.frac, args.iid))
+    plt.savefig(
+        './model/fed_{}_{}_{}_C{}_iid{}.svg'.format(args.mydataset, args.model, args.epochs, args.frac, args.iid))
 
     # plot local loss curve
     # for client_id, loss_list in loss_per_client.items():
