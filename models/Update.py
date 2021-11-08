@@ -31,7 +31,13 @@ class LocalUpdate(object):
         self.selected_clients = []
         self.ldr_train = DataLoader(DatasetSplit(dataset, idxs), batch_size=self.args.local_bs, shuffle=True)
 
-    def train(self, net):
+    def train(self, net, data_poisoning_mp=None):
+        """
+        train
+        :param net:
+        :param data_poisoning_mp:data poisoning，a dict
+        :return:
+        """
         net.train()
         # train and update
         optimizer = torch.optim.SGD(net.parameters(), lr=self.args.lr, momentum=self.args.momentum)
@@ -41,6 +47,9 @@ class LocalUpdate(object):
             batch_loss = []
             for batch_idx, (images, labels) in enumerate(self.ldr_train):
                 images, labels = images.to(self.args.device), labels.to(self.args.device)
+                if data_poisoning_mp is not None:
+                    for i in range(len(labels)):
+                        labels[i] = data_poisoning_mp[int(labels[i])]
                 net.zero_grad()
                 log_probs = net(images)
                 loss = self.loss_func(log_probs, labels)

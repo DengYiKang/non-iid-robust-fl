@@ -7,7 +7,7 @@ import copy  # 用于联邦学习全局模型的复制过程
 from torchvision import datasets, transforms
 
 from utils import preprocess
-from utils.sampling import mnist_noniid_more_classes, cifar_iid
+from utils.sampling import mnist_iid_duplicate, cifar_iid
 from utils.options import args_parser
 from models.Update import LocalUpdate
 from models.Nets import MLP, CNNMnist, CNNCifar, AE
@@ -26,7 +26,7 @@ def model_gen(args, dataset_train, cls_list):
     """
     img_size = dataset_train[0][0].shape
     if args.dataset == 'mnist':
-        dict_users = mnist_noniid_more_classes(dataset_train, args.num_users, cls_list, args.train_size)
+        dict_users = mnist_iid_duplicate(dataset_train, args.num_users, cls_list, args.train_size)
     elif args.dataset == 'cifar':
         if args.iid:
             dict_users = cifar_iid(dataset_train, args.num_users)

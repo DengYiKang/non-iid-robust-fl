@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # Python version: 3.6
+import random
 
 import matplotlib
 from matplotlib.ticker import MultipleLocator
@@ -11,7 +12,7 @@ import copy  # 用于联邦学习全局模型的复制过程
 from torchvision import datasets, transforms
 import torch
 
-from utils.sampling import mnist_iid, mnist_noniid, cifar_iid
+from utils.sampling import mnist_iid, mnist_noniid, cifar_iid, mnist_iid_duplicate
 from utils.options import args_parser
 from models.Update import LocalUpdate
 from models.Nets import MLP, CNNMnist, CNNCifar
@@ -106,7 +107,7 @@ if __name__ == '__main__':
     plt.plot(range(len(loss_train)), loss_train)
     plt.ylabel('train_loss')
     plt.savefig(
-        './model/fed_{}_{}_{}_C{}_iid{}.svg'.format(args.mydataset, args.model, args.epochs, args.frac, args.iid))
+        './model/fed_{}_{}_{}_C{}_iid{}.svg'.format(args.dataset, args.model, args.epochs, args.frac, args.iid))
 
     # plot local loss curve
     # for client_id, loss_list in loss_per_client.items():

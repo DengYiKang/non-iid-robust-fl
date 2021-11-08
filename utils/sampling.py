@@ -24,11 +24,12 @@ def mnist_iid(dataset, num_users):
 
 def mnist_noniid(dataset, num_users):
     """
-    Sample non-I.I.D client data from MNIST mydataset
+    Sample non-I.I.D client data from MNIST mydataset randomly
     :param dataset:
     :param num_users:
     :return:
     """
+    # 总数据量60k，每个类的数量约为6k
     num_shards, num_imgs = 200, 300
     idx_shard = [i for i in range(num_shards)]
     dict_users = {i: np.array([], dtype='int64') for i in range(num_users)}
@@ -44,6 +45,7 @@ def mnist_noniid(dataset, num_users):
     # divide and assign
     for i in range(num_users):
         # 每个user拥有2*num_imgs=600张图片，最多拥有两类或者一类
+        # replace=False表示不可以取相同数字
         rand_set = set(np.random.choice(idx_shard, 2, replace=False))
         idx_shard = list(set(idx_shard) - rand_set)
         for rand in rand_set:
@@ -51,9 +53,9 @@ def mnist_noniid(dataset, num_users):
     return dict_users
 
 
-def mnist_noniid_more_classes(dataset, num_users, class_list, train_size):
+def mnist_iid_duplicate(dataset, num_users, class_list, train_size):
     """
-
+    生成num_users个数据集，它们持有class_list中所定义的类数据，且各类数据均衡，它们之间是iid的。
     :param dataset:
     :param num_users:
     :param class_list:[1, 2]表示拥有1、2两个类的数据，元素取值范围：0~9
@@ -75,7 +77,39 @@ def mnist_noniid_more_classes(dataset, num_users, class_list, train_size):
         num_shards = 6000 / num_imgs
         for cls in class_list:
             offset = cls * 6000
-            rand = random.randint(0, num_shards)
+            rand = random.randint(0, num_shards - 1)
+            dict_users[i] = np.concatenate(
+                (dict_users[i], idxs[offset + rand * num_imgs:offset + (rand + 1) * num_imgs]),
+                axis=0)
+    return dict_users
+
+
+def mnist_noniid_designed(dataset, cls, train_size):
+    """
+    生成len(cls)个数据集，第i个数据集拥有cls[i]的类信息，且各个类均衡，每个数据集的数据量大小为train_size。它们之间不一定是iid的。
+    :param dataset:
+    :param cls:list of list，eg：[[1], [2], [1, 2]]
+    :param train_size:数据集的数据量大小
+    :return:dict_users，mp, eg:dict_users[i]=[1, 213, 300, ...]
+    """
+    num_users = len(cls)
+    dict_users = {i: np.array([], dtype='int64') for i in range(num_users)}
+    idxs = np.arange(60000)
+    labels = dataset.train_labels.numpy()
+
+    # sort labels
+    idxs_labels = np.vstack((idxs, labels))
+    idxs_labels = idxs_labels[:, idxs_labels[1, :].argsort()]
+    # idxs为按照label排好序后的索引
+    idxs = idxs_labels[0, :]
+
+    for i in range(cls):
+        # 每个类有num_imgs个数据量
+        num_imgs = int(train_size / len(cls[i]))
+        num_shards = 6000 / num_imgs
+        for c in cls[i]:
+            offset = c * 6000
+            rand = random.randint(0, num_shards - 1)
             dict_users[i] = np.concatenate(
                 (dict_users[i], idxs[offset + rand * num_imgs:offset + (rand + 1) * num_imgs]),
                 axis=0)

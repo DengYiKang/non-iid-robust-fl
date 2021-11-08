@@ -10,7 +10,7 @@ import copy  # 用于联邦学习全局模型的复制过程
 from torchvision import datasets, transforms
 import torch
 
-from utils.sampling import mnist_iid, mnist_noniid, cifar_iid, mnist_noniid_more_classes
+from utils.sampling import mnist_iid, mnist_noniid, cifar_iid, mnist_iid_duplicate
 from utils.options import args_parser
 from models.Update import LocalUpdate
 from models.Nets import MLP, CNNMnist, CNNCifar
@@ -34,7 +34,7 @@ def data_gen(args, path):
         else:
             rand_len = random.randint(1, 10)
             cls_list = random.sample(range(0, 10), min(rand_len, 10))
-            dict_users = mnist_noniid_more_classes(dataset_train, args.num_users, cls_list, args.train_size)
+            dict_users = mnist_iid_duplicate(dataset_train, args.num_users, cls_list, args.train_size)
     elif args.dataset == 'cifar':
         trans_cifar = transforms.Compose(
             [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
