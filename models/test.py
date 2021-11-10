@@ -34,15 +34,17 @@ def test_img(net_g, datatest, args):
     return accuracy, test_loss
 
 
-def brca_test(net, dataset, args, idx):
+def brca_test(net, w, dataset, args, idx):
     """
     brca中的共享测试
     :param net:
+    :param w:
     :param dataset:
     :param args:
     :param idx:
     :return: acc, test_loss
     """
+    net.load_state_dict(w)
     net.eval()
     # testing
     test_loss = 0

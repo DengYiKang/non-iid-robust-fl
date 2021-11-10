@@ -1,3 +1,5 @@
+import math
+
 import matplotlib
 
 matplotlib.use('Agg')
@@ -33,11 +35,18 @@ if __name__ == "__main__":
     args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
     # 定义所有user的类信息
     cls = []
+    # 随机的cls
+    # for i in range(args.num_users):
+    #     tmp = set()
+    #     for rand in range(random.randint(1, 10)):
+    #         tmp.add(random.randint(0, 9))
+    #     cls.append(list(tmp))
+    # iid的cls
     for i in range(args.num_users):
-        tmp = set()
-        for rand in range(random.randint(1, 10)):
-            tmp.add(random.randint(0, 9))
-        cls.append(list(tmp))
+        tmp = []
+        for j in range(0, 10):
+            tmp.append(j)
+        cls.append(tmp)
     # load mydataset and split users
     if args.dataset == 'mnist':
         trans_mnist = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
@@ -45,7 +54,7 @@ if __name__ == "__main__":
         dataset_test = datasets.MNIST('./data/mnist/', train=False, download=True, transform=trans_mnist)
         # sample users
         if cls is not None:
-            dict_users = mnist_noniid_designed(dataset_train, cls, 600)
+            dict_users = mnist_noniid_designed(dataset_train, cls, 1000)
         elif args.iid:
             dict_users = mnist_iid(dataset_train, args.num_users)
         else:
@@ -86,7 +95,7 @@ if __name__ == "__main__":
     # byzantine比例
     byzantine_proportion = 0.2
     # 全局更新计算式子中的新旧权值
-    alpha = 0.5
+    alpha = 0
     # 两种分数的加权
     beta = 0.5
     # 初始化记录
@@ -129,24 +138,26 @@ if __name__ == "__main__":
             loss_locals.append(copy.deepcopy(loss))
             if idx < args.num_users * byzantine_proportion:
                 # 序号前指定的比例为byzantine，将上传的w替换。model poisoning
-                w_locals[idx] = add_attack(w_locals[idx], GAUSSIAN_NOISY_ATTACK)
+                pass
+                # w_locals[idx] = add_attack(w_locals[idx], GAUSSIAN_NOISY_ATTACK)
         # 2.2、anomaly detection, e_scores
         ae_net.eval()
         for idx in range(args.num_users):
-            origin = loss_locals[idx][kind].view(1, -1)
+            origin = w_locals[idx][kind].view(1, -1)
             encoded, decoded = ae_net(origin)
             loss = rebuild_loss_func(decoded, origin)
-            e_scores[idx] = loss.data
+            e_scores.append(float(loss.data))
         e_mean = np.mean(e_scores)
         e_std = np.std(e_scores)
-        e_scores = [(item - e_mean) / e_std for item in e_scores]
+        e_scores = [1 / ((math.exp((item - e_mean) / e_std)) ** 2) for item in e_scores]
         # 2.3、data validation, f_scores
         for i in range(args.num_users):
-            f_scores[i] = brca_test(net=copy.deepcopy(net).to(args.device).load_state_dict(w_locals[i]),
-                                    dataset=dataset_test, args=args, idx=shared_dataset_test_idx[i])
+            accuracy, test_loss = brca_test(net=copy.deepcopy(net).to(args.device), w=w_locals[i],
+                                            dataset=dataset_test, args=args, idx=shared_dataset_test_idx[i])
+            f_scores.append(test_loss)
         f_mean = np.mean(f_scores)
         f_std = np.std(f_scores)
-        f_scores = [(item - f_mean) / f_std for item in f_scores]
+        f_scores = [1 / ((math.exp((item - f_mean) / f_std)) ** 2) for item in f_scores]
         e_sum = np.sum(e_scores)
         f_sum = np.sum(f_scores)
         # 正则化
@@ -168,17 +179,21 @@ if __name__ == "__main__":
         losses = []
         for idx in range(len(scores)):
             if scores[idx] > 0:
-                item = loss_locals[idx][kind].to(args.device)
+                item = w_locals[idx][kind].view(1, -1).to(args.device)
+                ae_net.zero_grad()
                 encoded, decoded = ae_net(item)
                 loss = rebuild_loss_func(decoded, item)
                 loss.backward()
                 optimizer.step()
                 losses.append(loss.data)
-        print('ae_net train loss: {:.3f}'.format(np.mean(losses[-1])))
+        print('ae_net train loss: {:.3f}'.format(losses[-1]))
         # 2.6、更新全局model
-        w_glob = alpha * w_glob
         for i in range(args.num_users):
-            w_glob += (1 - alpha) * scores[i] * w_locals[i]
+            for k in w_glob.keys():
+                w_glob[k] = alpha * w_glob[k]
+        for i in range(args.num_users):
+            for k in w_glob.keys():
+                w_glob[k] += (1 - alpha) * scores[i] * w_locals[i][k]
         net.load_state_dict(w_glob)
         # print loss
         loss_avg = sum(loss_locals) / len(loss_locals)

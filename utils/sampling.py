@@ -63,7 +63,7 @@ def mnist_iid_duplicate(dataset, num_users, class_list, train_size):
     :return:
     """
     dict_users = {i: np.array([], dtype='int64') for i in range(num_users)}
-    idxs = np.arange(60000)
+    idxs = np.arange(len(dataset))
     labels = dataset.train_labels.numpy()
 
     # sort labels
@@ -84,17 +84,17 @@ def mnist_iid_duplicate(dataset, num_users, class_list, train_size):
     return dict_users
 
 
-def mnist_noniid_designed(dataset, cls, train_size):
+def mnist_noniid_designed(dataset, cls, per_size):
     """
     生成len(cls)个数据集，第i个数据集拥有cls[i]的类信息，且各个类均衡，每个数据集的数据量大小为train_size。它们之间不一定是iid的。
     :param dataset:
     :param cls:list of list，eg：[[1], [2], [1, 2]]
-    :param train_size:数据集的数据量大小
+    :param per_size:每个数据集的数据量大小
     :return:dict_users，mp, eg:dict_users[i]=[1, 213, 300, ...]
     """
     num_users = len(cls)
     dict_users = {i: np.array([], dtype='int64') for i in range(num_users)}
-    idxs = np.arange(60000)
+    idxs = np.arange(len(dataset))
     labels = dataset.train_labels.numpy()
 
     # sort labels
@@ -103,9 +103,9 @@ def mnist_noniid_designed(dataset, cls, train_size):
     # idxs为按照label排好序后的索引
     idxs = idxs_labels[0, :]
 
-    for i in range(cls):
+    for i in range(len(cls)):
         # 每个类有num_imgs个数据量
-        num_imgs = int(train_size / len(cls[i]))
+        num_imgs = int(per_size / len(cls[i]))
         num_shards = 6000 / num_imgs
         for c in cls[i]:
             offset = c * 6000
