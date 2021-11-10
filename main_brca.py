@@ -13,6 +13,11 @@ from utils.sampling import mnist_iid, mnist_noniid, cifar_iid, mnist_noniid_desi
 from models.Update import LocalUpdate
 from models.Fed import FedAvg
 from models.test import brca_test, test_img
+from utils.poisoning import add_attack
+
+SAME_VALUE_ATTACK = "same value"
+SIGN_FLIPPING_ATTACK = "sign flipping"
+GAUSSIAN_NOISY_ATTACK = "gaussian noisy"
 
 if __name__ == "__main__":
     # seed
@@ -123,8 +128,8 @@ if __name__ == "__main__":
             w_locals[idx] = copy.deepcopy(w)
             loss_locals.append(copy.deepcopy(loss))
             if idx < args.num_users * byzantine_proportion:
-                # todo: add attack: w_locals[idx]=addAttack(w_locals[idx])
-                pass
+                # 序号前指定的比例为byzantine，将上传的w替换。model poisoning
+                w_locals[idx] = add_attack(w_locals[idx], GAUSSIAN_NOISY_ATTACK)
         # 2.2、anomaly detection, e_scores
         ae_net.eval()
         for idx in range(args.num_users):
@@ -150,7 +155,6 @@ if __name__ == "__main__":
             f_scores[idx] /= f_sum
         scores = [beta * e_scores[idx] + (1 - beta) * f_scores[idx] for idx in range(args.num_users)]
         # 2.4、取分数高于mean的clients的数据，其他分数置为0
-        # todo:其他实现，scores=filter(scores)
         score_mean = np.mean(scores)
         for idx in range(args.num_users):
             if score_mean > scores[idx]:
