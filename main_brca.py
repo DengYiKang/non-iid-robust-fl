@@ -20,6 +20,7 @@ from utils.poisoning import add_attack
 SAME_VALUE_ATTACK = "same value"
 SIGN_FLIPPING_ATTACK = "sign flipping"
 GAUSSIAN_NOISY_ATTACK = "gaussian noisy"
+NONE_ATTACK = "none attack"
 
 if __name__ == "__main__":
     # seed
@@ -94,6 +95,18 @@ if __name__ == "__main__":
     # 1、各种参数
     # byzantine比例
     byzantine_proportion = 0.2
+    # drop out proportion
+    drop_out_proportion = 0.1
+    # list of data poisoning map
+    attack_mp = {}
+    for i in range(0, 10):
+        attack_mp[i] = random.randint(0, 9)
+    data_poisoning_mp_list = []
+    for idx in range(args.num_users):
+        if idx < args.num_users * byzantine_proportion:
+            data_poisoning_mp_list.append(attack_mp)
+        else:
+            data_poisoning_mp_list.append(None)
     # 全局更新计算式子中的新旧权值
     alpha = 0
     # 两种分数的加权
@@ -128,18 +141,17 @@ if __name__ == "__main__":
         f_scores = []
         # 分数高的idx集合
         trust_idxs = []
-        m = max(args.num_users, 1)
         for idx in range(args.num_users):
             # 2.1、训练，获得上传参数，如果是byzantine，那么修改参数
             local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users[idx])
-            w, loss = local.train(net=copy.deepcopy(net).to(args.device))
+            w, loss = local.train(net=copy.deepcopy(net).to(args.device), data_poisoning_mp=data_poisoning_mp_list[idx])
             loss_per_client[idx].append(loss)
             w_locals[idx] = copy.deepcopy(w)
             loss_locals.append(copy.deepcopy(loss))
             if idx < args.num_users * byzantine_proportion:
                 # 序号前指定的比例为byzantine，将上传的w替换。model poisoning
+                # w_locals[idx] = add_attack(w_locals[idx], SIGN_FLIPPING_ATTACK)
                 pass
-                # w_locals[idx] = add_attack(w_locals[idx], GAUSSIAN_NOISY_ATTACK)
         # 2.2、anomaly detection, e_scores
         ae_net.eval()
         for idx in range(args.num_users):
@@ -151,13 +163,20 @@ if __name__ == "__main__":
         e_std = np.std(e_scores)
         e_scores = [1 / ((math.exp((item - e_mean) / e_std)) ** 2) for item in e_scores]
         # 2.3、data validation, f_scores
-        for i in range(args.num_users):
-            accuracy, test_loss = brca_test(net=copy.deepcopy(net).to(args.device), w=w_locals[i],
-                                            dataset=dataset_test, args=args, idx=shared_dataset_test_idx[i])
+        for idx in range(args.num_users):
+            accuracy, test_loss = brca_test(net=copy.deepcopy(net).to(args.device), w=w_locals[idx],
+                                            dataset=dataset_test, args=args, idx=shared_dataset_test_idx[idx],
+                                            data_poisoning_mp=data_poisoning_mp_list[idx])
             f_scores.append(test_loss)
         f_mean = np.mean(f_scores)
         f_std = np.std(f_scores)
         f_scores = [1 / ((math.exp((item - f_mean) / f_std)) ** 2) for item in f_scores]
+        # 优化：将各种评分规则下等比例地移除低分
+        # drop_out_nodes = np.union1d(np.argsort(e_scores)[:int(drop_out_proportion * args.num_users)],
+        #                             np.argsort(f_scores)[:int(drop_out_proportion * args.num_users)])
+        # for idx in drop_out_nodes:
+        #     e_scores[idx] = 0
+        #     f_scores[idx] = 0
         e_sum = np.sum(e_scores)
         f_sum = np.sum(f_scores)
         # 正则化
@@ -194,6 +213,8 @@ if __name__ == "__main__":
         for i in range(args.num_users):
             for k in w_glob.keys():
                 w_glob[k] += (1 - alpha) * scores[i] * w_locals[i][k]
+        # FedAvg，这一行作为对照,取消注释后就变为FedAvg，attack生效
+        # w_glob = FedAvg(w_locals)
         net.load_state_dict(w_glob)
         # print loss
         loss_avg = sum(loss_locals) / len(loss_locals)
@@ -203,7 +224,6 @@ if __name__ == "__main__":
     plt.figure()
     plt.plot(range(len(loss_train_list)), loss_train_list)
     plt.ylabel('train_loss')
-    plt.show()
     # plt.savefig('./model/fed_{}_{}_{}_C{}_iid{}.png'.format(args.dataset, args.model, args.epochs, args.frac, args.iid))
 
     # testing

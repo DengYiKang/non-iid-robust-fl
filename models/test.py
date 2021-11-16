@@ -34,7 +34,7 @@ def test_img(net_g, datatest, args):
     return accuracy, test_loss
 
 
-def brca_test(net, w, dataset, args, idx):
+def brca_test(net, w, dataset, args, idx, data_poisoning_mp=None):
     """
     brca中的共享测试
     :param net:
@@ -42,6 +42,7 @@ def brca_test(net, w, dataset, args, idx):
     :param dataset:
     :param args:
     :param idx:
+    :param data_poisoning_mp:
     :return: acc, test_loss
     """
     net.load_state_dict(w)
@@ -54,6 +55,10 @@ def brca_test(net, w, dataset, args, idx):
     for idx, (data, target) in enumerate(data_loader):
         if args.gpu != -1:
             data, target = data.cuda(), target.cuda()
+        # 共享测试集上的data poisoning
+        if data_poisoning_mp is not None:
+            for i in range(len(target)):
+                target[i] = data_poisoning_mp[int(target[i])]
         log_probs = net(data)
         # sum up batch loss
         test_loss += F.cross_entropy(log_probs, target, reduction='sum').item()
