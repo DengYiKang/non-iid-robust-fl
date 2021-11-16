@@ -25,11 +25,13 @@ class DatasetSplit(Dataset):
 
 
 class LocalUpdate(object):
-    def __init__(self, args, dataset=None, idxs=None):
+    def __init__(self, args, dataset=None, idxs=None, local_ep=None):
         self.args = args
         self.loss_func = nn.CrossEntropyLoss()
         self.selected_clients = []
         self.ldr_train = DataLoader(DatasetSplit(dataset, idxs), batch_size=self.args.local_bs, shuffle=True)
+        if local_ep is not None:
+            self.args.local_ep = local_ep
 
     def train(self, net, data_poisoning_mp=None):
         """
