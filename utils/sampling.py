@@ -78,7 +78,7 @@ def mnist_iid_duplicate(dataset, num_users, class_list, train_size):
         num_shards = num_per_class / num_imgs
         for cls in class_list:
             offset = cls * num_per_class
-            rand = random.randint(0, num_shards - 1)
+            rand = random.randint(0, int(num_shards - 1))
             dict_users[i] = np.concatenate(
                 (dict_users[i], idxs[offset + rand * num_imgs:offset + (rand + 1) * num_imgs]),
                 axis=0)
@@ -111,7 +111,7 @@ def mnist_noniid_designed(dataset, cls, per_size):
         num_shards = num_per_class / num_imgs
         for c in cls[i]:
             offset = c * num_per_class
-            rand = random.randint(0, num_shards - 1)
+            rand = random.randint(0, int(num_shards - 1))
             dict_users[i] = np.concatenate(
                 (dict_users[i], idxs[offset + rand * num_imgs:offset + (rand + 1) * num_imgs]),
                 axis=0)
