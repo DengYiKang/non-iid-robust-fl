@@ -31,7 +31,9 @@ class LocalUpdate(object):
         self.selected_clients = []
         self.ldr_train = DataLoader(DatasetSplit(dataset, idxs), batch_size=self.args.local_bs, shuffle=True)
         if local_ep is not None:
-            self.args.local_ep = local_ep
+            self.local_ep = local_ep
+        else:
+            self.local_ep = self.args.local_ep
 
     def train(self, net, data_poisoning_mp=None):
         """
@@ -45,7 +47,7 @@ class LocalUpdate(object):
         optimizer = torch.optim.SGD(net.parameters(), lr=self.args.lr, momentum=self.args.momentum)
 
         epoch_loss = []
-        for iter in range(self.args.local_ep):
+        for iter in range(self.local_ep):
             batch_loss = []
             for batch_idx, (images, labels) in enumerate(self.ldr_train):
                 images, labels = images.to(self.args.device), labels.to(self.args.device)

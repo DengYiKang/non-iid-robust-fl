@@ -71,12 +71,13 @@ def mnist_iid_duplicate(dataset, num_users, class_list, train_size):
     idxs_labels = idxs_labels[:, idxs_labels[1, :].argsort()]
     # idxs为按照label排好序后的索引
     idxs = idxs_labels[0, :]
+    num_per_class = int(len(dataset) / 10)
 
     for i in range(num_users):
         num_imgs = int(train_size / len(class_list))
-        num_shards = 6000 / num_imgs
+        num_shards = num_per_class / num_imgs
         for cls in class_list:
-            offset = cls * 6000
+            offset = cls * num_per_class
             rand = random.randint(0, num_shards - 1)
             dict_users[i] = np.concatenate(
                 (dict_users[i], idxs[offset + rand * num_imgs:offset + (rand + 1) * num_imgs]),
@@ -102,13 +103,14 @@ def mnist_noniid_designed(dataset, cls, per_size):
     idxs_labels = idxs_labels[:, idxs_labels[1, :].argsort()]
     # idxs为按照label排好序后的索引
     idxs = idxs_labels[0, :]
+    num_per_class = int(len(dataset) / 10)
 
     for i in range(len(cls)):
         # 每个类有num_imgs个数据量
         num_imgs = int(per_size / len(cls[i]))
-        num_shards = 6000 / num_imgs
+        num_shards = num_per_class / num_imgs
         for c in cls[i]:
-            offset = c * 6000
+            offset = c * num_per_class
             rand = random.randint(0, num_shards - 1)
             dict_users[i] = np.concatenate(
                 (dict_users[i], idxs[offset + rand * num_imgs:offset + (rand + 1) * num_imgs]),
@@ -127,7 +129,7 @@ def mnist_noniid_only_one_class(dataset, num_users, class_idx):
     num_shards, num_imgs = 10, 600
     idx_shard = [i for i in range(num_shards)]
     dict_users = {i: np.array([], dtype='int64') for i in range(num_users)}
-    idxs = np.arange(60000)
+    idxs = np.arange(len(dataset))
     labels = dataset.train_labels.numpy()
 
     # sort labels
@@ -135,13 +137,14 @@ def mnist_noniid_only_one_class(dataset, num_users, class_idx):
     idxs_labels = idxs_labels[:, idxs_labels[1, :].argsort()]
     # idxs为按照label排好序后的索引
     idxs = idxs_labels[0, :]
+    num_per_class = len(dataset) / 10
 
     # divide and assign
     for i in range(num_users):
         # 每个user拥有1*num_imgs=600张图片，只能拥有class_idx这一个类的图片
         rand_set = set(np.random.choice(idx_shard, 1, replace=False))
         idx_shard = list(set(idx_shard) - rand_set)
-        offset = class_idx * 6000
+        offset = class_idx * num_per_class
         for rand in rand_set:
             dict_users[i] = np.concatenate(
                 (dict_users[i], idxs[offset + rand * num_imgs:offset + (rand + 1) * num_imgs]),
