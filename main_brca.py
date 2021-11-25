@@ -1,4 +1,5 @@
 import math
+import datetime
 
 import matplotlib
 
@@ -93,6 +94,9 @@ if __name__ == "__main__":
     # copy weights
     w_glob = net.state_dict()
     # 1、各种参数
+    # ae的标准化参数
+    ae_mean = -0.0004
+    ae_std = 0.1251
     # byzantine比例
     byzantine_proportion = 0.2
     # drop out proportion
@@ -100,7 +104,8 @@ if __name__ == "__main__":
     # list of data poisoning map
     attack_mp = {}
     for i in range(0, 10):
-        attack_mp[i] = random.randint(0, 9)
+        # attack_mp[i] = random.randint(0, 9)
+        attack_mp[i] = 1
     data_poisoning_mp_list = []
     for idx in range(args.num_users):
         if idx < args.num_users * byzantine_proportion:
@@ -155,7 +160,9 @@ if __name__ == "__main__":
         # 2.2、anomaly detection, e_scores
         ae_net.eval()
         for idx in range(args.num_users):
-            origin = w_locals[idx][kind].view(1, -1)
+            origin = (w_locals[idx][kind].view(1, -1) - ae_mean) / ae_std
+            # origin = w_locals[idx][kind].view(1, -1)
+            # todo:修改了一处bug，之前没有对数据做标准化处理，待测试
             encoded, decoded = ae_net(origin)
             loss = rebuild_loss_func(decoded, origin)
             e_scores.append(float(loss.data))
@@ -172,11 +179,12 @@ if __name__ == "__main__":
         f_std = np.std(f_scores)
         f_scores = [1 / ((math.exp((item - f_mean) / f_std)) ** 2) for item in f_scores]
         # 优化：将各种评分规则下等比例地移除低分
-        # drop_out_nodes = np.union1d(np.argsort(e_scores)[:int(drop_out_proportion * args.num_users)],
-        #                             np.argsort(f_scores)[:int(drop_out_proportion * args.num_users)])
-        # for idx in drop_out_nodes:
-        #     e_scores[idx] = 0
-        #     f_scores[idx] = 0
+        drop_out_nodes = np.union1d(np.argsort(e_scores)[:int(drop_out_proportion * args.num_users)],
+                                    np.argsort(f_scores)[:int(drop_out_proportion * args.num_users)])
+        for idx in drop_out_nodes:
+            e_scores[idx] = 0
+            f_scores[idx] = 0
+        # 优化结尾
         e_sum = np.sum(e_scores)
         f_sum = np.sum(f_scores)
         # 正则化
@@ -185,23 +193,24 @@ if __name__ == "__main__":
             f_scores[idx] /= f_sum
         scores = [beta * e_scores[idx] + (1 - beta) * f_scores[idx] for idx in range(args.num_users)]
         # 2.4、取分数高于mean的clients的数据，其他分数置为0
-        score_mean = np.mean(scores)
-        for idx in range(args.num_users):
-            if score_mean > scores[idx]:
-                scores[idx] = 0
-            else:
-                trust_idxs.append(idx)
-        scores_sum = np.sum(scores)
-        scores = [item / scores_sum for item in scores]
+        # score_mean = np.mean(scores)
+        # for idx in range(args.num_users):
+        #     if score_mean > scores[idx]:
+        #         scores[idx] = 0
+        #     else:
+        #         trust_idxs.append(idx)
+        # scores_sum = np.sum(scores)
+        # scores = [item / scores_sum for item in scores]
         # 2.5、将分数高的数据喂给ae net训练
         ae_net.train()
         losses = []
         for idx in range(len(scores)):
             if scores[idx] > 0:
                 item = w_locals[idx][kind].view(1, -1).to(args.device)
+                normal_item = (item - ae_mean) / ae_std
                 ae_net.zero_grad()
-                encoded, decoded = ae_net(item)
-                loss = rebuild_loss_func(decoded, item)
+                encoded, decoded = ae_net(normal_item)
+                loss = rebuild_loss_func(decoded, normal_item)
                 loss.backward()
                 optimizer.step()
                 losses.append(loss.data)
