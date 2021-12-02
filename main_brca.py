@@ -38,17 +38,17 @@ if __name__ == "__main__":
     # 定义所有user的类信息
     cls = []
     # 随机的cls
-    # for i in range(args.num_users):
-    #     tmp = set()
-    #     for rand in range(random.randint(1, 10)):
-    #         tmp.add(random.randint(0, 9))
-    #     cls.append(list(tmp))
-    # iid的cls
     for i in range(args.num_users):
-        tmp = []
-        for j in range(0, 10):
-            tmp.append(j)
-        cls.append(tmp)
+        tmp = set()
+        for rand in range(random.randint(1, 10)):
+            tmp.add(random.randint(0, 9))
+        cls.append(list(tmp))
+    # iid的cls
+    # for i in range(args.num_users):
+    #     tmp = []
+    #     for j in range(0, 10):
+    #         tmp.append(j)
+    #     cls.append(tmp)
     # load mydataset and split users
     if args.dataset == 'mnist':
         trans_mnist = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
@@ -129,7 +129,7 @@ if __name__ == "__main__":
     w_locals = [w_glob for i in range(args.num_users)]
     net.train()
     # 加载anomaly detection model以及优化器参数
-    ae_model_path = './anomaly_detection/model/size_19360_batch_5_seed_10_loss_0.055.pth'
+    ae_model_path = 'anomaly_detection/model/mnist_mlp_dimIn500_size19360_batch5_seed10_loss0.055.pth'
     ae_net = AE().to(args.device)
     optimizer = torch.optim.SGD(ae_net.parameters(), lr=0.001)
     checkpoint = torch.load(ae_model_path)
@@ -149,7 +149,7 @@ if __name__ == "__main__":
         for idx in range(args.num_users):
             # 2.1、训练，获得上传参数，如果是byzantine，那么修改参数
             local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users[idx])
-            w, loss = local.train(net=copy.deepcopy(net).to(args.device), data_poisoning_mp=data_poisoning_mp_list[idx])
+            w, loss = local.train(net=copy.deepcopy(net).to(args.device), data_poisoning_mp=None)
             loss_per_client[idx].append(loss)
             w_locals[idx] = copy.deepcopy(w)
             loss_locals.append(copy.deepcopy(loss))
@@ -173,7 +173,7 @@ if __name__ == "__main__":
         for idx in range(args.num_users):
             accuracy, test_loss = brca_test(net=copy.deepcopy(net).to(args.device), w=w_locals[idx],
                                             dataset=dataset_test, args=args, idx=shared_dataset_test_idx[idx],
-                                            data_poisoning_mp=data_poisoning_mp_list[idx])
+                                            data_poisoning_mp=None)
             f_scores.append(test_loss)
         f_mean = np.mean(f_scores)
         f_std = np.std(f_scores)
@@ -222,8 +222,8 @@ if __name__ == "__main__":
         for i in range(args.num_users):
             for k in w_glob.keys():
                 w_glob[k] += (1 - alpha) * scores[i] * w_locals[i][k]
-        # FedAvg，这一行作为对照,取消注释后就变为FedAvg，attack生效
-        # w_glob = FedAvg(w_locals)
+        # FedAvg，这一行作为对照,取消注释后就变为FedAvg
+        w_glob = FedAvg(w_locals)
         net.load_state_dict(w_glob)
         # print loss
         loss_avg = sum(loss_locals) / len(loss_locals)
@@ -233,7 +233,9 @@ if __name__ == "__main__":
     plt.figure()
     plt.plot(range(len(loss_train_list)), loss_train_list)
     plt.ylabel('train_loss')
-    # plt.savefig('./model/fed_{}_{}_{}_C{}_iid{}.png'.format(args.dataset, args.model, args.epochs, args.frac, args.iid))
+    # plt.savefig('./model/fed_{}_{}_{}_C{}_iid.png'.format(args.dataset, args.model, args.epochs, args.frac))
+    plt.savefig('./result/fed_{}_{}_{}_user{}_C1_non-iid_brca_dpNone_totscFalse.png'.format(args.dataset, args.model,
+                                                                                           args.epochs, args.num_users))
 
     # testing
     net.eval()

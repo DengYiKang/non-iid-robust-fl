@@ -107,7 +107,8 @@ if __name__ == "__main__":
     # list of data poisoning map
     attack_mp = {}
     for i in range(0, 10):
-        attack_mp[i] = random.randint(0, 9)
+        # attack_mp[i] = random.randint(0, 9)
+        attack_mp[i] = 1
     data_poisoning_mp_list = []
     for idx in range(args.num_users):
         if idx < args.num_users * byzantine_proportion:
@@ -119,7 +120,7 @@ if __name__ == "__main__":
     # 两种分数的加权
     beta = 0.5
     # data validation阶段，相似度前gamma比例的不被选取
-    gamma = 0.2
+    gamma = 0.1
     # data validation阶段，随机选取的范围长度
     gamma_len = 0.2
     # 初始化记录
@@ -135,7 +136,7 @@ if __name__ == "__main__":
     w_locals = [w_glob for i in range(args.num_users)]
     net.train()
     # 加载anomaly detection model以及优化器参数，基于AE，这个AE也被用作过拟合模型的特征提取
-    ae_model_path = './anomaly_detection/model/size_19360_batch_5_seed_10_loss_0.055.pth'
+    ae_model_path = 'anomaly_detection/model/mnist_mlp_dimIn500_size19360_batch5_seed10_loss0.055.pth'
     ae_net = AE().to(args.device)
     optimizer = torch.optim.SGD(ae_net.parameters(), lr=0.001)
     checkpoint = torch.load(ae_model_path)
@@ -244,6 +245,12 @@ if __name__ == "__main__":
                 optimizer.step()
                 losses.append(loss.data)
         print('ae_net train loss: {:.3f}'.format(losses[-1]))
+        # 除去异常的client之外，各个client的贡献均衡
+        for idx in range(len(scores)):
+            if scores[idx] > 0:
+                scores[idx] = 1
+        sc_sum = np.sum(scores)
+        scores = [item / sc_sum for item in scores]
         # 2.6、更新全局model
         for i in range(args.num_users):
             for k in w_glob.keys():
