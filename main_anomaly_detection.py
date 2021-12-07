@@ -20,18 +20,19 @@ def data_gen(args):
 
 
 def do_preprocess():
-    input_path = './anomaly_detection/data/input/'
-    tot_path = './anomaly_detection/data/tot/size30k.pt'
-    train_path = './anomaly_detection/data/train/size24k.pt'
-    test_path = './anomaly_detection/data/test/size6k.pt'
-    train_standard_path = './anomaly_detection/data/train/size24k_standard.pt'
-    test_standard_path = './anomaly_detection/data/test/size6k_standard.pt'
-    preprocess(input_path, tot_path, train_path, test_path, train_standard_path, test_standard_path)
+    input_path = 'anomaly_detection/data/input/'
+    tot_path = 'anomaly_detection/data/tot/mnist_cnn_size30k.pt'
+    train_path = 'anomaly_detection/data/train/mnist_cnn_size24k.pt'
+    test_path = 'anomaly_detection/data/test/mnist_cnn_size6k.pt'
+    train_standard_path = 'anomaly_detection/data/train/mnist_cnn_size24k_standard.pt'
+    test_standard_path = 'anomaly_detection/data/test/mnist_cnn_size6k_standard.pt'
+    mean, std = preprocess(input_path, tot_path, train_path, test_path, train_standard_path, test_standard_path)
+    print("mean={}\tstd={}".format(mean, std))
 
 
 if __name__ == '__main__':
     # seed
-    seed = 10
+    seed = 34
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
@@ -43,10 +44,10 @@ if __name__ == '__main__':
     args.train_size = 600
     args.device = torch.device(
         'cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
-    # data_gen()
-    # do_preprocess()
-    dataset_train = AE_DATASET.AETrainDataSet(args, './anomaly_detection/data/train/size24k_standard.pt')
-    dataset_test = AE_DATASET.AETestDataSet(args, './anomaly_detection/data/test/size6k_standard.pt')
+    # data_gen(args)
+    do_preprocess()
+    dataset_train = AE_DATASET.AETrainDataSet(args, './anomaly_detection/data/train/mnist_cnn_size24k_standard.pt')
+    dataset_test = AE_DATASET.AETestDataSet(args, './anomaly_detection/data/test/mnist_cnn_size6k_standard.pt')
     batch_size = 5
     train_loader = DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(dataset_test, batch_size=10, shuffle=True)
@@ -77,6 +78,6 @@ if __name__ == '__main__':
     state_dict = {"net": ae_net.state_dict(), "optimizer": optimizer.state_dict(), "epoch": max_epochs}
     # torch.save(ae_net, './anomaly_detection/model/size_{}_loss_{}.pkl'.format(len(dataset_train), test_loss))
     torch.save(state_dict,
-               './anomaly_detection/model/size_{}_batch_{}_seed_{}_loss_{:.3f}.pth'.format(len(dataset_train),
+               './anomaly_detection/model/mnist_cnn_dimIn500_size{}_batch{}_seed{}_loss{:.3f}.pth'.format(len(dataset_train),
                                                                                            batch_size, seed,
                                                                                            test_loss))

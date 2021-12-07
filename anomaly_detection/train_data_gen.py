@@ -51,13 +51,16 @@ def data_gen(args, path):
     # build model
     if args.model == 'cnn' and args.dataset == 'cifar':
         net_glob = CNNCifar(args=args).to(args.device)
+        kind = 'fc3.weight'
     elif args.model == 'cnn' and args.dataset == 'mnist':
         net_glob = CNNMnist(args=args).to(args.device)
+        kind = 'fc2.weight'
     elif args.model == 'mlp':
         len_in = 1
         for x in img_size:
             len_in *= x
         net_glob = MLP(dim_in=len_in, dim_hidden=50, dim_out=args.num_classes).to(args.device)
+        kind = 'layer_hidden.weight'
     else:
         exit('Error: unrecognized model')
     print(net_glob)
@@ -69,7 +72,6 @@ def data_gen(args, path):
     # training
     loss_per_client = {}
     w_locals = []
-    kind = 'layer_hidden.weight'
 
     for t in range(args.num_users):
         loss_per_client[t] = []

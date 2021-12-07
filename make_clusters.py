@@ -13,7 +13,7 @@ from models.Update import LocalUpdate
 from models.Nets import MLP, CNNMnist, CNNCifar, AE
 
 index = 0
-ae_model_path = './anomaly_detection/model/size_19360_batch_5_seed_10_loss_0.055.pth'
+ae_model_path = 'anomaly_detection/model/mnist_mlp_dimIn500_size19360_batch5_seed10_loss0.055.pth'
 
 
 def model_gen(args, dataset_train, cls_list):

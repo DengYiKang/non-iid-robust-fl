@@ -68,9 +68,10 @@ def preprocess(input_path, tot_path, train_path, test_path, train_standard_path,
     split(tot_path, train_path, test_path)
     mean, std = cal_standard(tot_path)
     standard(mean, std, train_path, test_path, train_standard_path, test_standard_path)
+    return mean, std
 
 
 if __name__ == "__main__":
-    mean, std = cal_standard('./anomaly_detection/data/tot/size30k.pt')
+    mean, std = cal_standard('./anomaly_detection/data/tot/mnist_mlp_size30k.pt')
     print('mean={}'.format(float(mean)))
     print('std={}'.format(float(std)))

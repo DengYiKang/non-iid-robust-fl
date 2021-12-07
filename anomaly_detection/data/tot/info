@@ -1,2 +1,4 @@
-size30k.pt:
+mnist_mlp_size30k.pt:
 mean -0.0004, std: 0.1251
+mnist_cnn_size30k.pt:
+mean=-0.0026452108286321163	std=0.121788889169693

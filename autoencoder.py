@@ -21,8 +21,8 @@ if __name__ == '__main__':
 
     args = args_parser()
     args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
-    dataset_train = AE_DATASET.AETrainDataSet(args, './anomaly_detection/data/train/size24k_standard.pt')
-    dataset_test = AE_DATASET.AETestDataSet(args, './anomaly_detection/data/test/size6k_standard.pt')
+    dataset_train = AE_DATASET.AETrainDataSet(args, './anomaly_detection/data/train/mnist_mlp_size24k_standard.pt')
+    dataset_test = AE_DATASET.AETestDataSet(args, './anomaly_detection/data/test/mnist_mlp_size6k_standard.pt')
     train_loader = DataLoader(dataset_train, batch_size=5, shuffle=True)
     test_loader = DataLoader(dataset_test, batch_size=10, shuffle=True)
     ae_net = AE().to(args.device)

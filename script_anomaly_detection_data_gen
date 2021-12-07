@@ -1,4 +1,5 @@
 #!/bin/bash
-for ((i = 201; i <= 300; i++)); do
-  python ./main_anomaly_detection.py --epochs 1 --local_ep 40 --local_bs 32 --num_users 100 --index $i
+for ((i = 289; i <= 300; i++)); do
+  python ./main_anomaly_detection.py --epochs 1 --local_ep 40 --local_bs 32 --num_users 100 --index $i --model cnn --num_channels 1
 done
+# 90, 189, 289
