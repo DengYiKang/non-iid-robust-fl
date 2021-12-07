@@ -39,6 +39,13 @@ def args_parser():
     parser.add_argument('--seed', type=int, default=1, help='random seed (default: 1)')
     parser.add_argument('--all_clients', action='store_true', help='aggregation over all clients')
 
+    # model poisoning
+    parser.add_argument('--model_poisoning', type=str, default='none',
+                        help="none, same_value, sign_flipping, gaussian_noisy")
+
+    # data poisoning
+    parser.add_argument('--data_poisoning', type=str, default='none', help="none, training_set, all")
+
     # index
     parser.add_argument('--index', type=int, default=0, help="index of something")
     parser.add_argument('--class_idx', type=int, default=0, help="generate data for clustering")

@@ -25,7 +25,8 @@ NONE_ATTACK = "none attack"
 
 if __name__ == "__main__":
     # seed
-    seed = 34
+    # seed = 34
+    seed = 20
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
@@ -37,18 +38,20 @@ if __name__ == "__main__":
     args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
     # 定义所有user的类信息
     cls = []
-    # 随机的cls
-    for i in range(args.num_users):
-        tmp = set()
-        for rand in range(random.randint(1, 10)):
-            tmp.add(random.randint(0, 9))
-        cls.append(list(tmp))
-    # iid的cls
-    # for i in range(args.num_users):
-    #     tmp = []
-    #     for j in range(0, 10):
-    #         tmp.append(j)
-    #     cls.append(tmp)
+    if args.iid:
+        # iid的cls
+        for i in range(args.num_users):
+            tmp = []
+            for j in range(0, 10):
+                tmp.append(j)
+            cls.append(tmp)
+    else:
+        # 随机的cls
+        for i in range(args.num_users):
+            tmp = set()
+            for rand in range(random.randint(1, 10)):
+                tmp.add(random.randint(0, 9))
+            cls.append(list(tmp))
     # load mydataset and split users
     if args.dataset == 'mnist':
         trans_mnist = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
@@ -81,13 +84,16 @@ if __name__ == "__main__":
     # build model
     if args.model == 'cnn' and args.dataset == 'cifar':
         net = CNNCifar(args=args).to(args.device)
+        kind = 'fc3.weight'
     elif args.model == 'cnn' and args.dataset == 'mnist':
         net = CNNMnist(args=args).to(args.device)
+        kind = 'fc2.weight'
     elif args.model == 'mlp':
         len_in = 1
         for x in img_size:
             len_in *= x
         net = MLP(dim_in=len_in, dim_hidden=50, dim_out=args.num_classes).to(args.device)
+        kind = 'layer_hidden.weight'
     else:
         exit('Error: unrecognized model')
     print(net)
@@ -101,14 +107,16 @@ if __name__ == "__main__":
     byzantine_proportion = 0.2
     # drop out proportion
     drop_out_proportion = 0.1
+    # 每轮随机挑选的client数量
+    m = max(int(args.frac * args.num_users), 1)
     # list of data poisoning map
     attack_mp = {}
     for i in range(0, 10):
         # attack_mp[i] = random.randint(0, 9)
         attack_mp[i] = 1
     data_poisoning_mp_list = []
-    for idx in range(args.num_users):
-        if idx < args.num_users * byzantine_proportion:
+    for i in range(m):
+        if i < m * byzantine_proportion:
             data_poisoning_mp_list.append(attack_mp)
         else:
             data_poisoning_mp_list.append(None)
@@ -121,15 +129,14 @@ if __name__ == "__main__":
     loss_per_client = {}
     # 记录全局模型的loss的变化过程，用于绘图
     loss_train_list = []
-    kind = 'layer_hidden.weight'
     for t in range(args.num_users):
         loss_per_client[t] = []
-    print("Aggregation over all clients")
-    # 全局weight，w_locals[idx]为idx的weight，只保存最近一轮的weight
-    w_locals = [w_glob for i in range(args.num_users)]
+    if args.all_clients:
+        print("Aggregation over all clients")
     net.train()
     # 加载anomaly detection model以及优化器参数
     ae_model_path = 'anomaly_detection/model/mnist_mlp_dimIn500_size19360_batch5_seed10_loss0.055.pth'
+    # ae_model_path = 'anomaly_detection/model/mnist_cnn_dimIn500_size24000_batch5_seed34_loss0.010.pth'
     ae_net = AE().to(args.device)
     optimizer = torch.optim.SGD(ae_net.parameters(), lr=0.001)
     checkpoint = torch.load(ae_model_path)
@@ -138,7 +145,7 @@ if __name__ == "__main__":
     rebuild_loss_func = torch.nn.MSELoss().to(args.device)
     # 2、fed训练
     for iter in range(args.epochs):
-        # loss_locals为list，保存当前训练轮次中所有user的loss
+        # loss_locals为list，保存当前训练轮次中被选中的user的loss
         loss_locals = []
         # anomaly detection score list
         e_scores = []
@@ -146,23 +153,33 @@ if __name__ == "__main__":
         f_scores = []
         # 分数高的idx集合
         trust_idxs = []
-        for idx in range(args.num_users):
+        idxs_users = np.random.choice(range(args.num_users), m, replace=False)
+        # 全局weight，w_locals[idx]为最近一轮idx序号的weight，只保存最近一轮的weight
+        w_locals = [w_glob for i in range(m)]
+        for i, idx in enumerate(idxs_users):
             # 2.1、训练，获得上传参数，如果是byzantine，那么修改参数
             local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users[idx])
-            w, loss = local.train(net=copy.deepcopy(net).to(args.device), data_poisoning_mp=None)
+            w, loss = local.train(net=copy.deepcopy(net).to(args.device),
+                                  data_poisoning_mp={True: None, False: data_poisoning_mp_list[i]}
+                                  [args.data_poisoning == "none"])
             loss_per_client[idx].append(loss)
-            w_locals[idx] = copy.deepcopy(w)
+            w_locals[i] = copy.deepcopy(w)
             loss_locals.append(copy.deepcopy(loss))
-            if idx < args.num_users * byzantine_proportion:
+            if i < m * byzantine_proportion:
                 # 序号前指定的比例为byzantine，将上传的w替换。model poisoning
-                # w_locals[idx] = add_attack(w_locals[idx], SIGN_FLIPPING_ATTACK)
-                pass
+                if args.model_poisoning == "same_value":
+                    w_locals[i] = add_attack(w_locals[i], SAME_VALUE_ATTACK)
+                elif args.model_poisoning == "sign_flipping":
+                    w_locals[i] = add_attack(w_locals[i], SIGN_FLIPPING_ATTACK)
+                elif args.model_poisoning == "gaussian_noisy":
+                    w_locals[i] = add_attack(w_locals[i], GAUSSIAN_NOISY_ATTACK)
+                else:
+                    pass
         # 2.2、anomaly detection, e_scores
         ae_net.eval()
-        for idx in range(args.num_users):
-            origin = (w_locals[idx][kind].view(1, -1) - ae_mean) / ae_std
+        for i, idx in enumerate(idxs_users):
+            origin = (w_locals[i][kind].view(1, -1) - ae_mean) / ae_std
             # origin = w_locals[idx][kind].view(1, -1)
-            # todo:修改了一处bug，之前没有对数据做标准化处理，待测试
             encoded, decoded = ae_net(origin)
             loss = rebuild_loss_func(decoded, origin)
             e_scores.append(float(loss.data))
@@ -170,17 +187,18 @@ if __name__ == "__main__":
         e_std = np.std(e_scores)
         e_scores = [1 / ((math.exp((item - e_mean) / e_std)) ** 2) for item in e_scores]
         # 2.3、data validation, f_scores
-        for idx in range(args.num_users):
-            accuracy, test_loss = brca_test(net=copy.deepcopy(net).to(args.device), w=w_locals[idx],
+        for i, idx in enumerate(idxs_users):
+            accuracy, test_loss = brca_test(net=copy.deepcopy(net).to(args.device), w=w_locals[i],
                                             dataset=dataset_test, args=args, idx=shared_dataset_test_idx[idx],
-                                            data_poisoning_mp=None)
+                                            data_poisoning_mp={True: data_poisoning_mp_list[i], False: None}[
+                                                args.data_poisoning == "all"])
             f_scores.append(test_loss)
         f_mean = np.mean(f_scores)
         f_std = np.std(f_scores)
         f_scores = [1 / ((math.exp((item - f_mean) / f_std)) ** 2) for item in f_scores]
         # 优化：将各种评分规则下等比例地移除低分
-        drop_out_nodes = np.union1d(np.argsort(e_scores)[:int(drop_out_proportion * args.num_users)],
-                                    np.argsort(f_scores)[:int(drop_out_proportion * args.num_users)])
+        drop_out_nodes = np.union1d(np.argsort(e_scores)[:int(drop_out_proportion * m)],
+                                    np.argsort(f_scores)[:int(drop_out_proportion * m)])
         for idx in drop_out_nodes:
             e_scores[idx] = 0
             f_scores[idx] = 0
@@ -188,13 +206,13 @@ if __name__ == "__main__":
         e_sum = np.sum(e_scores)
         f_sum = np.sum(f_scores)
         # 正则化
-        for idx in range(args.num_users):
+        for idx in range(m):
             e_scores[idx] /= e_sum
             f_scores[idx] /= f_sum
-        scores = [beta * e_scores[idx] + (1 - beta) * f_scores[idx] for idx in range(args.num_users)]
+        scores = [beta * e_scores[idx] + (1 - beta) * f_scores[idx] for idx in range(m)]
         # 2.4、取分数高于mean的clients的数据，其他分数置为0
         # score_mean = np.mean(scores)
-        # for idx in range(args.num_users):
+        # for idx in range(m):
         #     if score_mean > scores[idx]:
         #         scores[idx] = 0
         #     else:
@@ -204,9 +222,9 @@ if __name__ == "__main__":
         # 2.5、将分数高的数据喂给ae net训练
         ae_net.train()
         losses = []
-        for idx in range(len(scores)):
-            if scores[idx] > 0:
-                item = w_locals[idx][kind].view(1, -1).to(args.device)
+        for i in range(len(scores)):
+            if scores[i] > 0:
+                item = w_locals[i][kind].view(1, -1).to(args.device)
                 normal_item = (item - ae_mean) / ae_std
                 ae_net.zero_grad()
                 encoded, decoded = ae_net(normal_item)
@@ -216,10 +234,9 @@ if __name__ == "__main__":
                 losses.append(loss.data)
         print('ae_net train loss: {:.3f}'.format(losses[-1]))
         # 2.6、更新全局model
-        for i in range(args.num_users):
-            for k in w_glob.keys():
-                w_glob[k] = alpha * w_glob[k]
-        for i in range(args.num_users):
+        for k in w_glob.keys():
+            w_glob[k] = alpha * w_glob[k]
+        for i, idx in enumerate(idxs_users):
             for k in w_glob.keys():
                 w_glob[k] += (1 - alpha) * scores[i] * w_locals[i][k]
         # FedAvg，这一行作为对照,取消注释后就变为FedAvg
@@ -235,7 +252,8 @@ if __name__ == "__main__":
     plt.ylabel('train_loss')
     # plt.savefig('./model/fed_{}_{}_{}_C{}_iid.png'.format(args.dataset, args.model, args.epochs, args.frac))
     plt.savefig('./result/fed_{}_{}_{}_user{}_C1_non-iid_brca_dpNone_totscFalse.png'.format(args.dataset, args.model,
-                                                                                           args.epochs, args.num_users))
+                                                                                            args.epochs,
+                                                                                            args.num_users))
 
     # testing
     net.eval()
