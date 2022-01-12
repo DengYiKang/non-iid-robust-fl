@@ -24,8 +24,8 @@ GAUSSIAN_NOISY_ATTACK = "gaussian noisy"
 NONE_ATTACK = "none attack"
 
 if __name__ == "__main__":
-    # seed
-    seed = 34
+    # seed 34
+    seed = 1
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
@@ -37,18 +37,20 @@ if __name__ == "__main__":
     args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
     # 定义所有user的类信息
     cls = []
-    # 随机的cls
-    # for i in range(args.num_users):
-    #     tmp = set()
-    #     for rand in range(random.randint(1, 10)):
-    #         tmp.add(random.randint(0, 9))
-    #     cls.append(list(tmp))
-    # iid的cls
-    for i in range(args.num_users):
-        tmp = []
-        for j in range(0, 10):
-            tmp.append(j)
-        cls.append(tmp)
+    if args.iid:
+        # iid的cls
+        for i in range(args.num_users):
+            tmp = []
+            for j in range(0, 10):
+                tmp.append(j)
+            cls.append(tmp)
+    else:
+        # 随机的cls
+        class_per_client = random.randint(1, 10)
+        # class_per_client = 3
+        for i in range(args.num_users):
+            tmp = list(np.random.choice(range(10), class_per_client, replace=False))
+            cls.append(tmp)
     # load mydataset and split users
     if args.dataset == 'mnist':
         trans_mnist = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
@@ -119,9 +121,9 @@ if __name__ == "__main__":
     alpha = 0
     # 两种分数的加权
     beta = 0.5
-    # data validation阶段，相似度前gamma比例的不被选取
-    gamma = 0.1
-    # data validation阶段，随机选取的范围长度
+    # data verification阶段，相似度前gamma比例的不被选取
+    gamma = 0.2
+    # data verification阶段，随机选取的范围长度
     gamma_len = 0.2
     # 初始化记录
     # loss_per_client[idx]为list，记录不同轮数时某个user的loss值
@@ -146,7 +148,9 @@ if __name__ == "__main__":
     # 所有client进行本地训练直到过拟合，client上传模型参数到中央服务器，中央服务器进行特征提取
     for idx in range(args.num_users):
         local = LocalUpdate(args=args, dataset=dataset_test, idxs=shared_dataset_test_idx[idx], local_ep=30)
-        w, loss = local.train(net=copy.deepcopy(net), data_poisoning_mp=None)
+        w, loss = local.train(net=copy.deepcopy(net),
+                              data_poisoning_mp={True: data_poisoning_mp_list[idx], False: None}[
+                                  args.data_poisoning == "all"])
         w_locals[idx] = copy.deepcopy(w)
     ae_net.eval()
     for idx in range(args.num_users):
@@ -188,7 +192,9 @@ if __name__ == "__main__":
         for idx in range(args.num_users):
             # 训练，获得上传参数，如果是byzantine，那么修改参数
             local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users[idx])
-            w, loss = local.train(net=copy.deepcopy(net).to(args.device), data_poisoning_mp=data_poisoning_mp_list[idx])
+            w, loss = local.train(net=copy.deepcopy(net).to(args.device),
+                                  data_poisoning_mp={True: None, False: data_poisoning_mp_list[idx]}[
+                                      args.data_poisoning == "none"])
             loss_per_client[idx].append(loss)
             w_locals[idx] = copy.deepcopy(w)
             loss_locals.append(copy.deepcopy(loss))
@@ -206,22 +212,27 @@ if __name__ == "__main__":
         e_mean = np.mean(e_scores)
         e_std = np.std(e_scores)
         e_scores = [1 / ((math.exp((item - e_mean) / e_std)) ** 2) for item in e_scores]
-        # data validation, f_scores
+        # data verification, f_scores
         # 对每个client，随机选取与它相似的client共享的数据集做验证集
         for idx in range(args.num_users):
-            validation_set_idx = random.randint(int(gamma * args.num_users),
-                                                int((gamma + gamma_len) * args.num_users))
+            random_idx = random.randint(int(gamma * args.num_users),
+                                        int((gamma + gamma_len) * args.num_users))
+            verification_set_idx = sims_in_order[idx][random_idx]
             accuracy, test_loss = brca_test(net=copy.deepcopy(net).to(args.device), w=w_locals[idx],
                                             dataset=dataset_test, args=args,
-                                            idx=shared_dataset_test_idx[validation_set_idx],
-                                            data_poisoning_mp=data_poisoning_mp_list[validation_set_idx])
+                                            idx=shared_dataset_test_idx[verification_set_idx],
+                                            data_poisoning_mp=
+                                            {True: data_poisoning_mp_list[verification_set_idx], False: None}[
+                                                args.data_poisoning == "all"])
             f_scores.append(test_loss)
         f_mean = np.mean(f_scores)
         f_std = np.std(f_scores)
         f_scores = [1 / ((math.exp((item - f_mean) / f_std)) ** 2) for item in f_scores]
         # 将各种评分规则下等比例地移除低分
-        drop_out_idxs = np.union1d(np.argsort(e_scores)[:int(drop_out_proportion * args.num_users)],
-                                   np.argsort(f_scores)[:int(drop_out_proportion * args.num_users)])
+        # drop_out_idxs = np.union1d(np.argsort(e_scores)[:int(drop_out_proportion * args.num_users)],
+        #                            np.argsort(f_scores)[:int(drop_out_proportion * args.num_users)])
+        # 只根据data verification取出异常客户端
+        drop_out_idxs = np.argsort(f_scores)[:int(drop_out_proportion * args.num_users * 2)]
         for idx in drop_out_idxs:
             e_scores[idx] = 0
             f_scores[idx] = 0
@@ -252,14 +263,13 @@ if __name__ == "__main__":
         sc_sum = np.sum(scores)
         scores = [item / sc_sum for item in scores]
         # 2.6、更新全局model
-        for i in range(args.num_users):
-            for k in w_glob.keys():
-                w_glob[k] = alpha * w_glob[k]
+        for k in w_glob.keys():
+            w_glob[k] = alpha * w_glob[k]
         for i in range(args.num_users):
             for k in w_glob.keys():
                 w_glob[k] += (1 - alpha) * scores[i] * w_locals[i][k]
         # FedAvg，这一行作为对照,取消注释后就变为FedAvg，attack生效
-        # w_glob = FedAvg(w_locals)
+        w_glob = FedAvg(w_locals)
         net.load_state_dict(w_glob)
         # print loss
         loss_avg = sum(loss_locals) / len(loss_locals)

@@ -112,8 +112,9 @@ if __name__ == "__main__":
     # list of data poisoning map
     attack_mp = {}
     for i in range(0, 10):
-        # attack_mp[i] = random.randint(0, 9)
-        attack_mp[i] = 1
+        attack_mp[i] = random.randint(0, 9)
+        # attack_mp[i] = random.randint(0, 5)
+        # attack_mp[i] = 1
     data_poisoning_mp_list = []
     for i in range(m):
         if i < m * byzantine_proportion:
@@ -233,6 +234,12 @@ if __name__ == "__main__":
                 optimizer.step()
                 losses.append(loss.data)
         print('ae_net train loss: {:.3f}'.format(losses[-1]))
+        # 除去异常的client之外，各个client的贡献均衡
+        for idx in range(len(scores)):
+            if scores[idx] > 0:
+                scores[idx] = 1
+        sc_sum = np.sum(scores)
+        scores = [item / sc_sum for item in scores]
         # 2.6、更新全局model
         for k in w_glob.keys():
             w_glob[k] = alpha * w_glob[k]
@@ -240,7 +247,7 @@ if __name__ == "__main__":
             for k in w_glob.keys():
                 w_glob[k] += (1 - alpha) * scores[i] * w_locals[i][k]
         # FedAvg，这一行作为对照,取消注释后就变为FedAvg
-        w_glob = FedAvg(w_locals)
+        # w_glob = FedAvg(w_locals)
         net.load_state_dict(w_glob)
         # print loss
         loss_avg = sum(loss_locals) / len(loss_locals)
