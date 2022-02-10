@@ -35,9 +35,46 @@ def test_img(net_g, datatest, args):
     return accuracy, test_loss
 
 
+def mnist_all_labels_test(net_g, dataset, idxs, args):
+    """
+    测试，返回各个标签的预测错误率，a标签的错误率=真实标签为a但被错误预测的数量/真实标签为a的数量
+    :param net_g:
+    :param dataset:
+    :param args:
+    :return:asr, 一个list，长度为10,表示各个标签的预测错误率
+    """
+    asr = [None for i in range(10)]
+    net_g.eval()
+    # testing
+    if idxs is None:
+        data_loader = DataLoader(dataset, batch_size=args.bs)
+    else:
+        data_loader = DataLoader(DatasetSplit(dataset, idxs), batch_size=args.bs)
+    cnt_source = [0 for i in range(10)]
+    cnt_mislabel = [0 for i in range(10)]
+    for idx, (data, target) in enumerate(data_loader):
+        if args.gpu != -1:
+            data, target = data.cuda(), target.cuda()
+        for i in range(len(target)):
+            cnt_source[int(target[i])] += 1
+        log_probs = net_g(data)
+        prob_labels = [np.argsort(item.tolist())[-1] for item in log_probs]
+        for i in range(len(target)):
+            if prob_labels[i] != target[i]:
+                cnt_mislabel[int(target[i])] += 1
+    for i in range(10):
+        # 因为数据集是randomly sample的，可能存在没有选到这一类标签的情况
+        if cnt_source[i] == 0:
+            asr[i] = 100.00
+            # print("\n[bug] balanced test set has no {}-label\n".format(i))
+        else:
+            asr[i] = 100.00 * cnt_mislabel[i] / cnt_source[i]
+    return asr
+
+
 def mnist_test(net_g, dataset, args, source_labels, target_label):
     """
-    测试，返回acc和asr
+    测试，返回acc和asr, asr=真实标签为source_labels但被错误预测的标签数量/真实标签为source_labels的标签数量
     :param net_g:
     :param dataset:
     :param args:

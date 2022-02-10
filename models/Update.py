@@ -68,6 +68,44 @@ class LocalUpdate(object):
         return net.state_dict(), sum(epoch_loss) / len(epoch_loss)
 
 
+class RebalanceUpdate(object):
+    def __init__(self, args, dataset, labels, idxs):
+        self.args = args
+        self.dataset = dataset
+        self.labels = labels
+        self.idxs = idxs
+        self.loss_func = nn.CrossEntropyLoss()
+
+    def train(self, net):
+        """
+        one step update
+        :param net:
+        :return: net.state_dict(), average loss
+        """
+        net.train()
+        # train and update
+        optimizer = torch.optim.SGD(net.parameters(), lr=self.args.lr, momentum=self.args.momentum)
+        epoch_loss = []
+        for item in self.labels:
+            dl = DataLoader(dataset=DatasetSplit(self.dataset, self.idxs[item]), batch_size=self.args.local_bs,
+                            shuffle=True)
+            batch_loss = []
+            for batch_idx, (images, labels) in enumerate(dl):
+                images, labels = images.to(self.args.device), labels.to(self.args.device)
+                net.zero_grad()
+                log_probs = net(images)
+                loss = self.loss_func(log_probs, labels)
+                loss.backward()
+                optimizer.step()
+                if self.args.verbose and batch_idx % 10 == 0:
+                    print('Update Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                        iter, batch_idx * len(images), len(self.ldr_train.dataset),
+                              100. * batch_idx / len(self.ldr_train), loss.item()))
+                batch_loss.append(loss.item())
+            epoch_loss.append(sum(batch_loss) / len(batch_loss))
+        return net.state_dict(), sum(epoch_loss) / len(epoch_loss)
+
+
 class PersonalizedLoss(nn.Module):
     def __init__(self, lamda):
         super().__init__()

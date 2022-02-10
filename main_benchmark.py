@@ -29,8 +29,10 @@ if __name__ == "__main__":
     args = args_parser()
     # byzantine比例
     byzantine_proportion = 0.2
+    # 每轮随机挑选的client数量
+    m = max(int(args.frac * args.num_users), 1)
     # closest nums
-    closest_num = max(int(args.num_users * (1 - byzantine_proportion)) - 2, 1)
+    closest_num = max(int(m * (1 - byzantine_proportion)) - 2, 1)
     # seed
     seed = args.seed
     torch.manual_seed(seed)
@@ -80,9 +82,6 @@ if __name__ == "__main__":
             exit('Error: only consider IID setting in CIFAR10')
     else:
         exit('Error: unrecognized mydataset')
-    # 共享的测试集，用于data validation，测试集的数据取自client的本地数据，
-    # 这里简化为：测试集的数据分布与对应client的本地数据的相同；
-    shared_dataset_test_idx = mnist_noniid_designed(dataset_test, cls, 100)
 
     img_size = dataset_train[0][0].shape
 
@@ -129,33 +128,39 @@ if __name__ == "__main__":
         loss_per_client[t] = []
     print("Aggregation over all clients")
     # 全局weight，w_locals[idx]为idx的weight，只保存最近一轮的weight
-    w_locals = [w_glob for i in range(args.num_users)]
+    w_locals = [w_glob for i in range(m)]
     net.train()
     # 2、fed训练
     for iter in range(args.epochs):
         # loss_locals为list，保存当前训练轮次中所有user的loss
         loss_locals = []
-        # anomaly detection score list
-        e_scores = []
-        # data validation score list
-        f_scores = []
-        # 分数高的idx集合
-        trust_idxs = []
-        for idx in range(args.num_users):
+        byzantine_users = np.random.choice(range(int(args.num_users * byzantine_proportion)),
+                                           math.ceil(m * byzantine_proportion), replace=False)
+        normal_users = np.random.choice(range(int(args.num_users * byzantine_proportion), args.num_users),
+                                        m - len(byzantine_users), replace=False)
+        idxs_users = np.concatenate((byzantine_users, normal_users))
+        idxs_users = np.sort(idxs_users)
+        for i, idx in enumerate(idxs_users):
             # 2.1、训练，获得上传参数，如果是byzantine，那么修改参数
             local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users[idx])
             w, loss = local.train(net=copy.deepcopy(net).to(args.device),
                                   data_poisoning_mp={True: None, False: data_poisoning_mp_list[idx]}[
                                       args.data_poisoning == "none"])
             loss_per_client[idx].append(loss)
-            w_locals[idx] = copy.deepcopy(w)
+            w_locals[i] = copy.deepcopy(w)
             loss_locals.append(copy.deepcopy(loss))
             if idx < args.num_users * byzantine_proportion:
                 # 序号前指定的比例为byzantine，将上传的w替换。model poisoning
-                w_locals[idx] = add_attack(w_locals[idx], GAUSSIAN_NOISY_ATTACK)
-                pass
-        # w_glob = krum(w_locals=w_locals, args=args, kind=kind, byzantine_proportion=byzantine_proportion)
-        # w_glob = trimmedMean(w_locals=w_locals, args=args, kind=kind, alpha=0.1)
+                if args.model_poisoning == "same_value":
+                    w_locals[i] = add_attack(w_locals[i], SAME_VALUE_ATTACK)
+                elif args.model_poisoning == "sign_flipping":
+                    w_locals[i] = add_attack(w_locals[i], SIGN_FLIPPING_ATTACK)
+                elif args.model_poisoning == "gaussian_noisy":
+                    w_locals[i] = add_attack(w_locals[i], GAUSSIAN_NOISY_ATTACK)
+                else:
+                    pass
+        # w_glob = krum(w_locals=w_locals, args=args, kind=kind, byzantine_proportion=byzantine_proportion, m=m)
+        # w_glob = trimmedMean(w_locals=w_locals, args=args, kind=kind, alpha=0.1, m=m)
         w_glob = geoMed(w_locals=w_locals, args=args, kind=kind, groups=10)
         net.load_state_dict(w_glob)
         # print loss
