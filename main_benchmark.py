@@ -3,6 +3,8 @@ import datetime
 
 import matplotlib
 
+from utils.record import record_datalist, generate_name_loss, generate_name
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import copy
@@ -123,6 +125,8 @@ if __name__ == "__main__":
     loss_per_client = {}
     # 记录全局模型的loss的变化过程，用于绘图
     loss_train_list = []
+    acc_list = []
+    asr_list = []
     kind = 'layer_hidden.weight'
     for t in range(args.num_users):
         loss_per_client[t] = []
@@ -159,14 +163,35 @@ if __name__ == "__main__":
                     w_locals[i] = add_attack(w_locals[i], GAUSSIAN_NOISY_ATTACK)
                 else:
                     pass
-        # w_glob = krum(w_locals=w_locals, args=args, kind=kind, byzantine_proportion=byzantine_proportion, m=m)
-        # w_glob = trimmedMean(w_locals=w_locals, args=args, kind=kind, alpha=0.1, m=m)
-        w_glob = geoMed(w_locals=w_locals, args=args, kind=kind, groups=10)
+        if args.benchmark == "1":
+            # w_glob = krum(w_locals=w_locals, args=args, kind=kind, byzantine_proportion=byzantine_proportion, m=m)
+            w_glob = trimmedMean(w_locals=w_locals, args=args, kind=kind, alpha=0.1, m=m)
+        elif args.benchmark == "2":
+            w_glob = geoMed(w_locals=w_locals, args=args, kind=kind, groups=10)
+        else:
+            w_glob = FedAvg(w_locals)
         net.load_state_dict(w_glob)
         # print loss
         loss_avg = sum(loss_locals) / len(loss_locals)
         print('Round {:3d}, Average loss {:.3f}'.format(iter, loss_avg))
         loss_train_list.append(loss_avg)
+        # 每一轮进行测试
+        net.eval()
+        acc_test, loss_test, asr_test = mnist_test(net, dataset_test, args, source_labels, target_label)
+        acc_list.append(float(acc_test))
+        asr_list.append(asr_test)
+        net.train()
+
+    # save loss list
+    record_datalist(loss_train_list,
+                    generate_name(args.seed, args.num_users, args.frac, args.epochs, args.data_poisoning,
+                                  args.model_poisoning, args.iid, args.model, args.dataset, "loss"))
+    # save acc list
+    record_datalist(acc_list, generate_name(args.seed, args.num_users, args.frac, args.epochs, args.data_poisoning,
+                                            args.model_poisoning, args.iid, args.model, args.dataset, "acc"))
+    # save asr list
+    record_datalist(asr_list, generate_name(args.seed, args.num_users, args.frac, args.epochs, args.data_poisoning,
+                                            args.model_poisoning, args.iid, args.model, args.dataset, "asr"))
     # plot loss curve
     plt.figure()
     plt.plot(range(len(loss_train_list)), loss_train_list)

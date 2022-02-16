@@ -46,6 +46,9 @@ def args_parser():
     # data poisoning
     parser.add_argument('--data_poisoning', type=str, default='none', help="none, training_set, all")
 
+    # benchmark 只有在main_benchmark文件中才会用到
+    parser.add_argument('--benchmark', type=str, default='0', help="0-FedAvg, 1-Krum, 2-TM, 3-GM")
+
     # index
     parser.add_argument('--index', type=int, default=0, help="index of something")
     parser.add_argument('--class_idx', type=int, default=0, help="generate data for clustering")

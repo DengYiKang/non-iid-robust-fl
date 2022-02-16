@@ -2,6 +2,8 @@ import math
 
 import matplotlib, datetime
 
+from utils.record import record_datalist, generate_name_loss, generate_name
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import copy
@@ -30,7 +32,7 @@ if __name__ == "__main__":
     source_labels = [7, 9]
     target_label = 3
     # byzantine比例
-    byzantine_proportion = 0.3
+    byzantine_proportion = 0.2
     # drop out proportion
     drop_out_proportion = 0.2
     # 根据错误率排序，错误率前多少的需要进行矫正
@@ -133,6 +135,8 @@ if __name__ == "__main__":
     loss_per_client = {}
     # 记录全局模型的loss的变化过程，用于绘图
     loss_train_list = []
+    acc_list = []
+    asr_list = []
     for t in range(args.num_users):
         loss_per_client[t] = []
     print("Aggregation over all clients")
@@ -226,11 +230,30 @@ if __name__ == "__main__":
         loss_avg = sum(loss_locals) / len(loss_locals)
         print('Round {:3d}, Average loss {:.3f}'.format(iter, loss_avg))
         loss_train_list.append(loss_avg)
+        # 每一轮进行测试
+        net.eval()
+        acc_test, loss_test, asr_test = mnist_test(net, dataset_test, args, source_labels, target_label)
+        acc_list.append(float(acc_test))
+        asr_list.append(asr_test)
+        net.train()
+
+    # save loss list
+    record_datalist(loss_train_list,
+                    generate_name(args.seed, args.num_users, args.frac, args.epochs, args.data_poisoning,
+                                  args.model_poisoning, args.iid, args.model, args.dataset, "loss"))
+    # save acc list
+    record_datalist(acc_list, generate_name(args.seed, args.num_users, args.frac, args.epochs, args.data_poisoning,
+                                            args.model_poisoning, args.iid, args.model, args.dataset, "acc"))
+    # save asr list
+    record_datalist(asr_list, generate_name(args.seed, args.num_users, args.frac, args.epochs, args.data_poisoning,
+                                            args.model_poisoning, args.iid, args.model, args.dataset, "asr"))
+
     # plot loss curve
     plt.figure()
     plt.plot(range(len(loss_train_list)), loss_train_list)
     plt.ylabel('train_loss')
-    # plt.savefig('./model/fed_{}_{}_{}_C{}_iid{}.png'.format(args.dataset, args.model, args.epochs, args.frac, args.iid))
+    # plt.savefig(
+    #     './result/rebalance_{}_{}_{}_C{}_iid{}.png'.format(args.dataset, args.model, args.epochs, args.frac, args.iid))
 
     # testing
     net.eval()

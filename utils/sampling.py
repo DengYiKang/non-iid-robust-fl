@@ -152,6 +152,28 @@ def mnist_noniid_only_one_class(dataset, num_users, class_idx):
     return dict_users
 
 
+def cifar_noniid_designed(dataset, cls, per_size):
+    """
+    生成len(cls)个数据集，第i个数据集拥有cls[i]的类信息，且各个类均衡，每个数据集的数据量大小为train_size。它们之间不一定是iid的。
+    :param dataset:
+    :param cls: list of list，eg：[[1], [2], [1, 2]]
+    :param per_size: 每个数据集的数据量大小
+    :return: dict_users，mp, eg:dict_users[i]=[1, 213, 300, ...]
+    """
+    num_users = len(cls)
+    dict_users = {i: np.array([], dtype='int64') for i in range(num_users)}
+    labels = np.array(dataset.targets)
+    label_idxs = {}
+    for i in range(10):
+        label_idxs[i] = np.where(labels == i)[0]
+    for i in range(len(cls)):
+        num_imgs = int(per_size / len(cls[i]))
+        for c in cls[i]:
+            dict_users[i] = np.concatenate((dict_users[i], np.random.choice(label_idxs[c], num_imgs, replace=False)),
+                                           axis=0)
+    return dict_users
+
+
 def cifar_iid(dataset, num_users):
     """
     Sample I.I.D. client data from CIFAR10 mydataset
