@@ -222,7 +222,7 @@ if __name__ == "__main__":
         for i in range(m):
             if f_scores[i] != 0:
                 w_locals_normal.append(w_locals[i])
-        w_glob = geoMed(w_locals=w_locals_normal, args=args, kind=None, groups=10)
+        w_glob = geoMed(w_locals=w_locals_normal, args=args, kind=None, groups=int(len(w_locals_normal) / 5))
         # FedAvg，这一行作为对照,取消注释后就变为FedAvg
         # w_glob = FedAvg(w_locals)
         net.load_state_dict(w_glob)
@@ -237,6 +237,9 @@ if __name__ == "__main__":
         asr_list.append(asr_test)
         net.train()
 
+    acc_list = [round(float(item) / 100, 3) for item in acc_list]
+
+    asr_list = [round(float(item) / 100, 5) for item in asr_list]
     # save loss list
     record_datalist(loss_train_list,
                     generate_name(args.seed, args.num_users, args.frac, args.epochs, args.data_poisoning,
