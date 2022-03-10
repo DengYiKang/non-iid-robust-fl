@@ -275,7 +275,7 @@ if __name__ == "__main__":
         # idxs_users:
         # np.random.permutation(idxs_users):
         # idxs_users[::-1]:
-        for idx in idxs_users[::-1]:
+        for idx in idxs_users:
             local = LocalUpdate(args=args, dataset=dataset_train, idxs=shared_dataset_test_idx[idx], local_ep=1)
             w, loss = local.train(net=copy.deepcopy(net),
                                   data_poisoning_mp={True: data_poisoning_mp_list[idx], False: None}[

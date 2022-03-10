@@ -2,6 +2,9 @@ import math
 
 import matplotlib, datetime
 
+from utils.record import record_datalist, generate_name
+from utils.w_glob_cal import geoMed
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import copy
@@ -15,7 +18,7 @@ from models.Nets import MLP, CNNMnist, CNNCifar, AE
 from utils.sampling import mnist_iid, mnist_noniid, cifar_iid, mnist_noniid_designed
 from models.Update import LocalUpdate
 from models.Fed import FedAvg
-from models.test import brca_test, test_img
+from models.test import brca_test, test_img, mnist_test
 from utils.poisoning import add_attack
 
 SAME_VALUE_ATTACK = "same value"
@@ -24,16 +27,26 @@ GAUSSIAN_NOISY_ATTACK = "gaussian noisy"
 NONE_ATTACK = "none attack"
 
 if __name__ == "__main__":
-    # seed 34
-    seed = 1
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    np.random.seed(seed)
+    args = args_parser()
+    source_labels = [7, 9]
+    target_label = 3
+    # byzantine比例
+    byzantine_proportion = 0.2
+    # drop out proportion
+    drop_out_proportion = 0.2
+    # data verification阶段，相似度前gamma比例的不被选取
+    gamma = 0.2
+    # data verification阶段，随机选取的范围长度
+    gamma_len = 0.2
+    # 每轮随机挑选的client数量
+    m = max(int(args.frac * args.num_users), 1)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    np.random.seed(args.seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
-    random.seed(seed)
+    random.seed(args.seed)
     # args, dataset
-    args = args_parser()
     args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
     # 定义所有user的类信息
     cls = []
@@ -46,11 +59,11 @@ if __name__ == "__main__":
             cls.append(tmp)
     else:
         # 随机的cls
-        class_per_client = random.randint(1, 10)
-        # class_per_client = 3
         for i in range(args.num_users):
-            tmp = list(np.random.choice(range(10), class_per_client, replace=False))
-            cls.append(tmp)
+            tmp = set()
+            for rand in range(random.randint(1, 10)):
+                tmp.add(random.randint(0, 9))
+            cls.append(list(tmp))
     # load mydataset and split users
     if args.dataset == 'mnist':
         trans_mnist = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
@@ -77,7 +90,7 @@ if __name__ == "__main__":
     # 共享的测试集，用于data validation，测试集的数据取自client的本地数据，
     # 这里简化为：测试集的数据分布与对应client的本地数据的相同；
     # todo:在最后的测试中，需要把共享的数据剔除
-    shared_dataset_test_idx = mnist_noniid_designed(dataset_test, cls, 100)
+    shared_dataset_test_idx = mnist_noniid_designed(dataset_train, cls, 100)
 
     img_size = dataset_train[0][0].shape
 
@@ -100,42 +113,37 @@ if __name__ == "__main__":
     # ae的标准化参数
     ae_mean = -0.0004
     ae_std = 0.1251
-    # byzantine比例
-    byzantine_proportion = 0.2
-    # drop out proportion
-    drop_out_proportion = 0.1
     # 过拟合的特征
     features = []
     # list of data poisoning map
     attack_mp = {}
     for i in range(0, 10):
+        if i in source_labels:
+            attack_mp[i] = target_label
+        else:
+            attack_mp[i] = i
+        # attack_mp[i] = random.randint(0, 5)
         # attack_mp[i] = random.randint(0, 9)
-        attack_mp[i] = 1
+        # attack_mp[i] = 1
     data_poisoning_mp_list = []
     for idx in range(args.num_users):
         if idx < args.num_users * byzantine_proportion:
             data_poisoning_mp_list.append(attack_mp)
         else:
             data_poisoning_mp_list.append(None)
-    # 全局更新计算式子中的新旧权值
-    alpha = 0
-    # 两种分数的加权
-    beta = 0.5
-    # data verification阶段，相似度前gamma比例的不被选取
-    gamma = 0.2
-    # data verification阶段，随机选取的范围长度
-    gamma_len = 0.2
     # 初始化记录
     # loss_per_client[idx]为list，记录不同轮数时某个user的loss值
     loss_per_client = {}
     # 记录全局模型的loss的变化过程，用于绘图
     loss_train_list = []
+    acc_list = []
+    asr_list = []
     kind = 'layer_hidden.weight'
     for t in range(args.num_users):
         loss_per_client[t] = []
     print("Aggregation over all clients")
     # 全局weight，w_locals[idx]为idx的weight，只保存最近一轮的weight
-    w_locals = [w_glob for i in range(args.num_users)]
+    w_overfits = [w_glob for i in range(args.num_users)]
     net.train()
     # 加载anomaly detection model以及优化器参数，基于AE，这个AE也被用作过拟合模型的特征提取
     ae_model_path = 'anomaly_detection/model/mnist_mlp_dimIn500_size19360_batch5_seed10_loss0.055.pth'
@@ -147,14 +155,14 @@ if __name__ == "__main__":
     rebuild_loss_func = torch.nn.MSELoss().to(args.device)
     # 所有client进行本地训练直到过拟合，client上传模型参数到中央服务器，中央服务器进行特征提取
     for idx in range(args.num_users):
-        local = LocalUpdate(args=args, dataset=dataset_test, idxs=shared_dataset_test_idx[idx], local_ep=30)
+        local = LocalUpdate(args=args, dataset=dataset_train, idxs=shared_dataset_test_idx[idx], local_ep=30)
         w, loss = local.train(net=copy.deepcopy(net),
                               data_poisoning_mp={True: data_poisoning_mp_list[idx], False: None}[
                                   args.data_poisoning == "all"])
-        w_locals[idx] = copy.deepcopy(w)
+        w_overfits[idx] = copy.deepcopy(w)
     ae_net.eval()
     for idx in range(args.num_users):
-        origin = (w_locals[idx][kind].view(1, -1) - ae_mean) / ae_std
+        origin = (w_overfits[idx][kind].view(1, -1) - ae_mean) / ae_std
         encoded, decoded = ae_net(origin)
         features.append(encoded)
     # 计算client之间的相似度
@@ -179,102 +187,94 @@ if __name__ == "__main__":
     sims_in_order = []
     for idx in range(args.num_users):
         sims_in_order.append(np.argsort(sims[idx]).tolist())
+    # 全局weight，w_locals[idx]为最近一轮idx序号的weight，只保存最近一轮的weight，这时的len为m
+    w_locals = [w_glob for i in range(m)]
     # fed训练
     for iter in range(args.epochs):
         # loss_locals为list，保存当前训练轮次中所有user的loss
         loss_locals = []
-        # anomaly detection score list
-        e_scores = []
         # data validation score list
         f_scores = []
-        # 分数高的idx集合
-        trust_idxs = []
-        for idx in range(args.num_users):
+        byzantine_users = np.random.choice(range(int(args.num_users * byzantine_proportion)),
+                                           math.ceil(m * byzantine_proportion), replace=False)
+        normal_users = np.random.choice(range(int(args.num_users * byzantine_proportion), args.num_users),
+                                        m - len(byzantine_users), replace=False)
+        idxs_users = np.concatenate((byzantine_users, normal_users))
+        idxs_users = np.sort(idxs_users)
+        for i, idx in enumerate(idxs_users):
             # 训练，获得上传参数，如果是byzantine，那么修改参数
             local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users[idx])
             w, loss = local.train(net=copy.deepcopy(net).to(args.device),
                                   data_poisoning_mp={True: None, False: data_poisoning_mp_list[idx]}[
                                       args.data_poisoning == "none"])
             loss_per_client[idx].append(loss)
-            w_locals[idx] = copy.deepcopy(w)
+            w_locals[i] = copy.deepcopy(w)
             loss_locals.append(copy.deepcopy(loss))
             if idx < args.num_users * byzantine_proportion:
                 # 序号前指定的比例为byzantine，将上传的w替换。model poisoning
-                # w_locals[idx] = add_attack(w_locals[idx], SIGN_FLIPPING_ATTACK)
-                pass
-        # anomaly detection, e_scores
-        ae_net.eval()
-        for idx in range(args.num_users):
-            origin = (w_locals[idx][kind].view(1, -1) - ae_mean) / ae_std
-            encoded, decoded = ae_net(origin)
-            loss = rebuild_loss_func(decoded, origin)
-            e_scores.append(float(loss.data))
-        e_mean = np.mean(e_scores)
-        e_std = np.std(e_scores)
-        e_scores = [1 / ((math.exp((item - e_mean) / e_std)) ** 2) for item in e_scores]
+                if args.model_poisoning == "same_value":
+                    w_locals[i] = add_attack(w_locals[i], SAME_VALUE_ATTACK)
+                elif args.model_poisoning == "sign_flipping":
+                    w_locals[i] = add_attack(w_locals[i], SIGN_FLIPPING_ATTACK)
+                elif args.model_poisoning == "gaussian_noisy":
+                    w_locals[i] = add_attack(w_locals[i], GAUSSIAN_NOISY_ATTACK)
+                else:
+                    pass
         # data verification, f_scores
         # 对每个client，随机选取与它相似的client共享的数据集做验证集
-        for idx in range(args.num_users):
+        for i, idx in enumerate(idxs_users):
             random_idx = random.randint(int(gamma * args.num_users),
                                         int((gamma + gamma_len) * args.num_users))
             verification_set_idx = sims_in_order[idx][random_idx]
-            accuracy, test_loss = brca_test(net=copy.deepcopy(net).to(args.device), w=w_locals[idx],
-                                            dataset=dataset_test, args=args,
+            accuracy, test_loss = brca_test(net=copy.deepcopy(net).to(args.device), w=w_locals[i],
+                                            dataset=dataset_train, args=args,
                                             idx=shared_dataset_test_idx[verification_set_idx],
                                             data_poisoning_mp=
                                             {True: data_poisoning_mp_list[verification_set_idx], False: None}[
                                                 args.data_poisoning == "all"])
             f_scores.append(test_loss)
-        f_mean = np.mean(f_scores)
-        f_std = np.std(f_scores)
-        f_scores = [1 / ((math.exp((item - f_mean) / f_std)) ** 2) for item in f_scores]
-        # 将各种评分规则下等比例地移除低分
-        # drop_out_idxs = np.union1d(np.argsort(e_scores)[:int(drop_out_proportion * args.num_users)],
-        #                            np.argsort(f_scores)[:int(drop_out_proportion * args.num_users)])
         # 只根据data verification取出异常客户端
-        drop_out_idxs = np.argsort(f_scores)[:int(drop_out_proportion * args.num_users * 2)]
-        for idx in drop_out_idxs:
-            e_scores[idx] = 0
-            f_scores[idx] = 0
-        e_sum = np.sum(e_scores)
-        f_sum = np.sum(f_scores)
-        # 正则化
-        for idx in range(args.num_users):
-            e_scores[idx] /= e_sum
-            f_scores[idx] /= f_sum
-        scores = [beta * e_scores[idx] + (1 - beta) * f_scores[idx] for idx in range(args.num_users)]
-        # 2.5、将分数高的数据喂给ae net训练
-        ae_net.train()
-        losses = []
-        for idx in range(len(scores)):
-            if scores[idx] > 0:
-                item = (w_locals[idx][kind].view(1, -1).to(args.device) - ae_mean) / ae_std
-                ae_net.zero_grad()
-                encoded, decoded = ae_net(item)
-                loss = rebuild_loss_func(decoded, item)
-                loss.backward()
-                optimizer.step()
-                losses.append(loss.data)
-        print('ae_net train loss: {:.3f}'.format(losses[-1]))
+        drop_out_idxs = np.argsort(f_scores)[::-1][:int(drop_out_proportion * m)]
+        for i in drop_out_idxs:
+            f_scores[i] = 0
         # 除去异常的client之外，各个client的贡献均衡
-        for idx in range(len(scores)):
-            if scores[idx] > 0:
-                scores[idx] = 1
-        sc_sum = np.sum(scores)
-        scores = [item / sc_sum for item in scores]
-        # 2.6、更新全局model
-        for k in w_glob.keys():
-            w_glob[k] = alpha * w_glob[k]
-        for i in range(args.num_users):
-            for k in w_glob.keys():
-                w_glob[k] += (1 - alpha) * scores[i] * w_locals[i][k]
+        for i in range(len(f_scores)):
+            if f_scores[i] > 0:
+                f_scores[i] = 1
+        f_sum = np.sum(f_scores)
+        f_scores = [item / f_sum for item in f_scores]
+        w_locals_normal = []
+        for i in range(m):
+            if f_scores[i] != 0:
+                w_locals_normal.append(w_locals[i])
+        w_glob = geoMed(w_locals=w_locals_normal, args=args, kind=None, groups=int(len(w_locals_normal) / 5))
         # FedAvg，这一行作为对照,取消注释后就变为FedAvg，attack生效
-        w_glob = FedAvg(w_locals)
+        # w_glob = FedAvg(w_locals)
         net.load_state_dict(w_glob)
         # print loss
         loss_avg = sum(loss_locals) / len(loss_locals)
         print('Round {:3d}, Average loss {:.3f}'.format(iter, loss_avg))
         loss_train_list.append(loss_avg)
+        # 每一轮进行测试
+        net.eval()
+        acc_test, loss_test, asr_test = mnist_test(net, dataset_test, args, source_labels, target_label)
+        acc_list.append(float(acc_test))
+        asr_list.append(asr_test)
+        net.train()
+
+    acc_list = [round(float(item) / 100, 3) for item in acc_list]
+
+    asr_list = [round(float(item) / 100, 5) for item in asr_list]
+    # save loss list
+    record_datalist(loss_train_list,
+                    generate_name(args.seed, args.num_users, args.frac, args.epochs, args.data_poisoning,
+                                  args.model_poisoning, args.iid, args.model, args.dataset, "loss"))
+    # save acc list
+    record_datalist(acc_list, generate_name(args.seed, args.num_users, args.frac, args.epochs, args.data_poisoning,
+                                            args.model_poisoning, args.iid, args.model, args.dataset, "acc"))
+    # save asr list
+    record_datalist(asr_list, generate_name(args.seed, args.num_users, args.frac, args.epochs, args.data_poisoning,
+                                            args.model_poisoning, args.iid, args.model, args.dataset, "asr"))
     # plot loss curve
     plt.figure()
     plt.plot(range(len(loss_train_list)), loss_train_list)
@@ -283,7 +283,9 @@ if __name__ == "__main__":
 
     # testing
     net.eval()
-    acc_train, loss_train = test_img(net, dataset_train, args)
-    acc_test, loss_test = test_img(net, dataset_test, args)
-    print("Training accuracy: {:.2f}".format(acc_train))
-    print("Testing accuracy: {:.2f}".format(acc_test))
+    # acc_train, loss_train = test_img(net, dataset_train, args)
+    # acc_test, loss_test = test_img(net, dataset_test, args)
+    acc_train, loss_train, asr_train = mnist_test(net, dataset_train, args, source_labels, target_label)
+    acc_test, loss_test, asr_test = mnist_test(net, dataset_test, args, source_labels, target_label)
+    print("Training accuracy: {:.2f}\nTraining attack success rate: {:.2f}".format(acc_train, asr_train))
+    print("\nTesting accuracy: {:.2f}\nTesting attack success rate: {:.2f}".format(acc_test, asr_test))

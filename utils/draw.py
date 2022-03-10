@@ -6,19 +6,21 @@ from utils.preprocess import walkFile
 
 
 def plot(filename):
-    save_name = "../result/pic/select/loss/" + filename.split("/")[-1][0:-4] + ".svg"
+    save_name = "../result/pic/select/asr/" + filename.split("/")[-1][0:-4] + ".svg"
     data = read_loss_record(filename)
     plt.figure()
     x = np.linspace(1, 200, 200)
     colors = ['b', 'g', 'r', 'c', 'm', 'y']
-    labels = ['FedAvg', 'TrimmedMean', 'GeoMedian', 'Rebalance', 'DataVerification']
+    # RandomValidation Rebalance
+    labels = ['FedAvg', 'TrimmedMean', 'GeoMedian', 'RandomValidation', 'DataVerification']
     for i in range(len(data)):
         plt.plot(x, data[i], color=colors[i], linestyle='-', label=labels[i])
     plt.legend()
     plt.xlabel("Communication Rounds")
-    plt.ylabel("Loss")
-    # plt.ylabel("Test Accuracy")
-    plt.title("Non-IID MNIST MLP GaussianNoisy")
+    # Test Accuracy Attack Success Rate
+    plt.ylabel("Attack Success Rate")
+    # SameValue SignFlipping GaussianNoisy DataPoisoning
+    plt.title("IID MNIST MLP SignFlipping")
     plt.savefig(save_name)
     plt.close()
 
@@ -27,4 +29,5 @@ if __name__ == "__main__":
     # file_list = walkFile("../result/asr")
     # for file in file_list:
     #     plot(file)
-    plot("../result/loss/seed50_user100_frac0.5_epochs200_dpnone_mpgaussian_noisy_modelmlp_datasetmnist_iidFalse.txt")
+    # result/acc/seed50_user100_frac0.5_epochs200_dpall_mpnone_modelmlp_datasetmnist_iidFalse.txt
+    plot("../result/asr/seed50_user100_frac0.5_epochs200_dpnone_mpsign_flipping_modelmlp_datasetmnist_iidTrue.txt")
