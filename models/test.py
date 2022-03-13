@@ -74,7 +74,7 @@ def mnist_all_labels_test(net_g, dataset, idxs, args):
 
 def mnist_test(net_g, dataset, args, source_labels, target_label):
     """
-    测试，返回acc和asr, asr=真实标签为source_labels但被错误预测的标签数量/真实标签为source_labels的标签数量
+    测试，返回acc和asr, asr=真实标签为source_labels但被错误预测为target_label的标签数量/真实标签为source_labels的标签数量
     :param net_g:
     :param dataset:
     :param args:
@@ -99,7 +99,7 @@ def mnist_test(net_g, dataset, args, source_labels, target_label):
         log_probs = net_g(data)
         prob_labels = [np.argsort(item.tolist())[-1] for item in log_probs]
         for i in range(len(target)):
-            if int(target[i]) in source_labels and prob_labels[i] != target[i]:
+            if int(target[i]) in source_labels and prob_labels[i] == target_label:
                 cnt_mislabel += 1
         # sum up batch loss
         test_loss += F.cross_entropy(log_probs, target, reduction='sum').item()

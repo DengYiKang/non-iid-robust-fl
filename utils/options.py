@@ -46,8 +46,14 @@ def args_parser():
     # data poisoning
     parser.add_argument('--data_poisoning', type=str, default='none', help="none, training_set, all")
 
+    # num_attackers是包含在num_users里面的
+    parser.add_argument('--num_attackers', type=int, default=0, help="number of attackers")
+
     # benchmark 只有在main_benchmark文件中才会用到
     parser.add_argument('--benchmark', type=str, default='0', help="0-FedAvg, 1-Krum, 2-TM, 3-GM")
+
+    # Dirichlet Distribution
+    parser.add_argument('--dir_alpha', type=float, default=1, help="Dirichlet")
 
     # index
     parser.add_argument('--index', type=int, default=0, help="index of something")

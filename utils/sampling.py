@@ -7,18 +7,47 @@ import numpy as np
 from torchvision import datasets, transforms
 
 
-def mnist_iid(dataset, num_users):
+def random_select_on_dict_users(dict_users):
     """
-    Sample I.I.D. client data from MNIST mydataset
+    从dict_users所指定的idxs中随机选出十分之一的sample
+    :param dict_users:
+    :return:
+    """
+    dict_sample = {}
+    for i in range(len(dict_users)):
+        dict_sample[i] = np.random.choice(dict_users[i], int(len(dict_users[i]) / 10), replace=False)
+    return dict_sample
+
+
+def mnist_one_label_select(dataset, label, sample_size):
+    """
+    从dataset中选取sample_size大小的label，返回idx
+    :param dataset:
+    :param label:
+    :param sample_size
+    :return:
+    """
+    targets = dataset.targets.numpy()
+    label_idxs = list(np.where(targets == int(label)))[0]
+    return np.random.choice(label_idxs, sample_size, replace=False)
+
+
+def mnist_iid(dataset, num_users, sample_size=None):
+    """
+    Sample I.I.D. client data from MNIST mydataset, each label has sample_size data
     :param dataset:
     :param num_users:
+    :param sample_size:
     :return: dict of image index
     """
-    num_items = int(len(dataset) / num_users)
-    dict_users, all_idxs = {}, [i for i in range(len(dataset))]
+    if sample_size is None:
+        sample_size = int(len(dataset) / num_users / 10)
+    dict_users = {i: np.array([], dtype='int64') for i in range(num_users)}
+    targets = dataset.targets.numpy()
     for i in range(num_users):
-        dict_users[i] = set(np.random.choice(all_idxs, num_items, replace=False))
-        all_idxs = list(set(all_idxs) - dict_users[i])
+        for label in range(10):
+            idxs = list(np.where(targets == int(label)))[0]
+            dict_users[i] = np.concatenate((dict_users[i], np.random.choice(idxs, sample_size, replace=False)), axis=0)
     return dict_users
 
 
@@ -94,6 +123,7 @@ def mnist_noniid_designed(dataset, cls, per_size):
     :return:dict_users，mp, eg:dict_users[i]=[1, 213, 300, ...]
     """
     num_users = len(cls)
+    targets = dataset.targets.numpy()
     dict_users = {i: np.array([], dtype='int64') for i in range(num_users)}
     idxs = np.arange(len(dataset))
     labels = dataset.train_labels.numpy()
