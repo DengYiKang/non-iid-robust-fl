@@ -3,25 +3,27 @@ import copy
 import torch
 
 
-def generate_name(seed, user, frac, epochs, dp, mp, iid, model, dataset, dir_name):
+def generate_name(prefix, seed, user, attackers, frac, epochs, dp, mp, model, dataset, dir_name, alpha):
     """
     根据参数返回唯一id
     :param seed:
     :param user:
+    :param attackers:
     :param frac:
     :param epochs:
     :param dp:
     :param mp:
-    :param iid:
     :param model:
     :param dataset:
     :param dir_name:目录
+    :param alpha
     :return:
     """
-    name = "result/" + str(dir_name) + "/" + "seed" + str(seed) + "_user" + str(user) + "_frac" + str(
+    name = "new_result/" + str(dir_name) + "/" + str(prefix) + "seed" + str(seed) + "_user" + str(
+        user) + "_attackers" + str(attackers) + "_frac" + str(
         frac) + "_epochs" + str(
         epochs) + "_dp" + str(
-        dp) + "_mp" + str(mp) + "_model" + str(model) + "_dataset" + str(dataset) + "_iid" + str(iid) + ".txt"
+        dp) + "_mp" + str(mp) + "_model" + str(model) + "_dataset" + str(dataset) + "_alpha" + str(alpha) + ".txt"
     return name
 
 

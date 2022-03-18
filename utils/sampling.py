@@ -29,6 +29,7 @@ def mnist_one_label_select(dataset, label, sample_size):
     """
     targets = dataset.targets.numpy()
     label_idxs = list(np.where(targets == int(label)))[0]
+    sample_size = min(sample_size, len(label_idxs))
     return np.random.choice(label_idxs, sample_size, replace=False)
 
 

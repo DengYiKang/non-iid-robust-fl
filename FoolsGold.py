@@ -59,7 +59,7 @@ if __name__ == "__main__":
                                                     dir_alpha=args.dir_alpha,
                                                     seed=args.seed)
             dict_users = noniid_labeldir_part.client_dict
-            # 对异常客户端注入百分之二十的source label，避免无数据可毒的情况
+            # 对异常客户端注入百分之十的source label，避免无数据可毒的情况
             if args.data_poisoning != "none":
                 for idx in range(args.num_attackers):
                     dict_users[idx] = np.append(dict_users[idx], mnist_one_label_select(dataset_train, source_labels[0],
@@ -119,6 +119,7 @@ if __name__ == "__main__":
     for t in range(args.num_users):
         loss_per_client[t] = []
     print("Aggregation over all clients")
+    print(f"foolsgold_seed{args.seed}_alpha{args.dir_alpha}")
     # 全局weight，w_locals[idx]为最近一轮idx序号的weight，只保存最近一轮的weight，这时的len为m
     w_locals = [w_glob for i in range(args.num_users)]
     H = [None for i in range(args.num_users)]
@@ -205,16 +206,23 @@ if __name__ == "__main__":
     acc_list = [round(float(item) / 100, 3) for item in acc_list]
 
     asr_list = [round(float(item) / 100, 5) for item in asr_list]
+    prefix = "foolsgold_"
     # # save loss list
     # record_datalist(loss_train_list,
-    #                 generate_name(args.seed, args.num_users, args.frac, args.epochs, args.data_poisoning,
-    #                               args.model_poisoning, args.iid, args.model, args.dataset, "loss"))
+    #                 generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
+    #                               args.data_poisoning,
+    #                               args.model_poisoning, args.model, args.dataset, "loss", args.dir_alpha))
     # # save acc list
-    # record_datalist(acc_list, generate_name(args.seed, args.num_users, args.frac, args.epochs, args.data_poisoning,
-    #                                         args.model_poisoning, args.iid, args.model, args.dataset, "acc"))
+    # record_datalist(acc_list,
+    #                 generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
+    #                               args.data_poisoning,
+    #                               args.model_poisoning, args.model, args.dataset, "acc", args.dir_alpha))
     # # save asr list
-    # record_datalist(asr_list, generate_name(args.seed, args.num_users, args.frac, args.epochs, args.data_poisoning,
-    #                                         args.model_poisoning, args.iid, args.model, args.dataset, "asr"))
+    # record_datalist(asr_list,
+    #                 generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
+    #                               args.data_poisoning,
+    #                               args.model_poisoning, args.model, args.dataset, "asr", args.dir_alpha))
+
     # plot loss curve
     plt.figure()
     plt.plot(range(len(loss_train_list)), loss_train_list)

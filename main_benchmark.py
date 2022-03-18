@@ -2,6 +2,7 @@ import math
 import datetime
 
 import matplotlib
+from fedlab.utils.dataset import MNISTPartitioner
 
 from utils.record import record_datalist, generate_name_loss, generate_name
 
@@ -15,7 +16,7 @@ import random
 from utils.options import args_parser
 from torchvision import datasets, transforms
 from models.Nets import MLP, CNNMnist, CNNCifar, AE
-from utils.sampling import mnist_iid, mnist_noniid, cifar_iid, mnist_noniid_designed
+from utils.sampling import mnist_iid, mnist_noniid, cifar_iid, mnist_noniid_designed, mnist_one_label_select
 from models.Update import LocalUpdate
 from models.Fed import FedAvg
 from models.test import brca_test, test_img, mnist_test
@@ -29,12 +30,10 @@ NONE_ATTACK = "none attack"
 
 if __name__ == "__main__":
     args = args_parser()
-    # byzantine比例
-    byzantine_proportion = 0.2
-    # 每轮随机挑选的client数量
-    m = max(int(args.frac * args.num_users), 1)
+    source_labels = [7]
+    target_label = 1
     # closest nums
-    closest_num = max(int(m * (1 - byzantine_proportion)) - 2, 1)
+    closest_num = max(int(args.num_users * (1 - 0.3)) - 2, 1)
     # seed
     seed = args.seed
     torch.manual_seed(seed)
@@ -45,34 +44,28 @@ if __name__ == "__main__":
     random.seed(seed)
     # args, dataset
     args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
-    # 定义所有user的类信息
-    cls = []
-    if args.iid:
-        # iid的cls
-        for i in range(args.num_users):
-            tmp = []
-            for j in range(0, 10):
-                tmp.append(j)
-            cls.append(tmp)
-    else:
-        # 随机的cls
-        for i in range(args.num_users):
-            tmp = set()
-            for rand in range(random.randint(1, 10)):
-                tmp.add(random.randint(0, 9))
-            cls.append(list(tmp))
     # load mydataset and split users
     if args.dataset == 'mnist':
         trans_mnist = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
         dataset_train = datasets.MNIST('./data/mnist/', train=True, download=True, transform=trans_mnist)
         dataset_test = datasets.MNIST('./data/mnist/', train=False, download=True, transform=trans_mnist)
         # sample users
-        if cls is not None:
-            dict_users = mnist_noniid_designed(dataset_train, cls, 1000)
-        elif args.iid:
-            dict_users = mnist_iid(dataset_train, args.num_users)
+        if args.iid:
+            iid_part = MNISTPartitioner(dataset_train.targets,
+                                        num_clients=args.num_users,
+                                        partition="iid",
+                                        seed=args.seed)
+            dict_users = iid_part.client_dict
         else:
-            dict_users = mnist_noniid(dataset_train, args.num_users)
+            noniid_labeldir_part = MNISTPartitioner(dataset_train.targets, args.num_users, partition="noniid-labeldir",
+                                                    dir_alpha=args.dir_alpha,
+                                                    seed=args.seed)
+            dict_users = noniid_labeldir_part.client_dict
+            # 对异常客户端注入百分之二十的source label，避免无数据可毒的情况
+            if args.data_poisoning != "none":
+                for idx in range(args.num_attackers):
+                    dict_users[idx] = np.append(dict_users[idx], mnist_one_label_select(dataset_train, source_labels[0],
+                                                                                        int(len(dict_users[idx]) / 5)))
     elif args.dataset == 'cifar':
         trans_cifar = transforms.Compose(
             [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
@@ -104,19 +97,14 @@ if __name__ == "__main__":
     w_glob = net.state_dict()
     # list of data poisoning map
     attack_mp = {}
-    source_labels = [7, 9]
-    target_label = 1
     for i in range(0, 10):
         if i in source_labels:
             attack_mp[i] = target_label
         else:
             attack_mp[i] = i
-        # attack_mp[i] = random.randint(0, 5)
-        # attack_mp[i] = random.randint(0, 9)
-        # attack_mp[i] = 1
     data_poisoning_mp_list = []
     for idx in range(args.num_users):
-        if idx < args.num_users * byzantine_proportion:
+        if idx < args.num_attackers:
             data_poisoning_mp_list.append(attack_mp)
         else:
             data_poisoning_mp_list.append(None)
@@ -132,28 +120,22 @@ if __name__ == "__main__":
         loss_per_client[t] = []
     print("Aggregation over all clients")
     # 全局weight，w_locals[idx]为idx的weight，只保存最近一轮的weight
-    w_locals = [w_glob for i in range(m)]
+    w_locals = [w_glob for i in range(args.num_users)]
     net.train()
     # 2、fed训练
     for iter in range(args.epochs):
         # loss_locals为list，保存当前训练轮次中所有user的loss
         loss_locals = []
-        byzantine_users = np.random.choice(range(int(args.num_users * byzantine_proportion)),
-                                           math.ceil(m * byzantine_proportion), replace=False)
-        normal_users = np.random.choice(range(int(args.num_users * byzantine_proportion), args.num_users),
-                                        m - len(byzantine_users), replace=False)
-        idxs_users = np.concatenate((byzantine_users, normal_users))
-        idxs_users = np.sort(idxs_users)
-        for i, idx in enumerate(idxs_users):
+        for i in range(args.num_users):
             # 2.1、训练，获得上传参数，如果是byzantine，那么修改参数
-            local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users[idx])
+            local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users[i])
             w, loss = local.train(net=copy.deepcopy(net).to(args.device),
-                                  data_poisoning_mp={True: None, False: data_poisoning_mp_list[idx]}[
+                                  data_poisoning_mp={True: None, False: data_poisoning_mp_list[i]}[
                                       args.data_poisoning == "none"])
-            loss_per_client[idx].append(loss)
+            loss_per_client[i].append(loss)
             w_locals[i] = copy.deepcopy(w)
             loss_locals.append(copy.deepcopy(loss))
-            if idx < args.num_users * byzantine_proportion:
+            if i < args.num_attackers:
                 # 序号前指定的比例为byzantine，将上传的w替换。model poisoning
                 if args.model_poisoning == "same_value":
                     w_locals[i] = add_attack(w_locals[i], SAME_VALUE_ATTACK)
@@ -163,11 +145,11 @@ if __name__ == "__main__":
                     w_locals[i] = add_attack(w_locals[i], GAUSSIAN_NOISY_ATTACK)
                 else:
                     pass
-        if args.benchmark == "1":
-            # w_glob = krum(w_locals=w_locals, args=args, kind=kind, byzantine_proportion=byzantine_proportion, m=m)
-            w_glob = trimmedMean(w_locals=w_locals, args=args, kind=kind, alpha=0.1, m=m)
+        if args.benchmark == "0":
+            w_glob = krum(w_locals=w_locals, args=args, kind=kind, byzantine_proportion=0.3, m=args.num_users)
+            # w_glob = trimmedMean(w_locals=w_locals, args=args, kind=kind, alpha=0.1, m=m)
         elif args.benchmark == "2":
-            w_glob = geoMed(w_locals=w_locals, args=args, kind=kind, groups=int(len(w_locals) / 5))
+            w_glob = geoMed(w_locals=w_locals, args=args, kind=kind, groups=1)
         else:
             w_glob = FedAvg(w_locals)
         net.load_state_dict(w_glob)
@@ -185,16 +167,27 @@ if __name__ == "__main__":
     acc_list = [round(float(item) / 100, 3) for item in acc_list]
 
     asr_list = [round(float(item) / 100, 5) for item in asr_list]
+    prefix = ""
+    if args.benchmark == "2":
+        prefix = "rfa_"
+    else:
+        prefix = "fedavg_"
     # save loss list
     record_datalist(loss_train_list,
-                    generate_name(args.seed, args.num_users, args.frac, args.epochs, args.data_poisoning,
-                                  args.model_poisoning, args.iid, args.model, args.dataset, "loss"))
+                    generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
+                                  args.data_poisoning,
+                                  args.model_poisoning, args.model, args.dataset, "loss", args.dir_alpha))
     # save acc list
-    record_datalist(acc_list, generate_name(args.seed, args.num_users, args.frac, args.epochs, args.data_poisoning,
-                                            args.model_poisoning, args.iid, args.model, args.dataset, "acc"))
+    record_datalist(acc_list,
+                    generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
+                                  args.data_poisoning,
+                                  args.model_poisoning, args.model, args.dataset, "acc", args.dir_alpha))
     # save asr list
-    record_datalist(asr_list, generate_name(args.seed, args.num_users, args.frac, args.epochs, args.data_poisoning,
-                                            args.model_poisoning, args.iid, args.model, args.dataset, "asr"))
+    record_datalist(asr_list,
+                    generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
+                                  args.data_poisoning,
+                                  args.model_poisoning, args.model, args.dataset, "asr", args.dir_alpha))
+
     # plot loss curve
     plt.figure()
     plt.plot(range(len(loss_train_list)), loss_train_list)

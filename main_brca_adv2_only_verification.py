@@ -29,14 +29,12 @@ NONE_ATTACK = "none attack"
 if __name__ == "__main__":
     args = args_parser()
     # seed 20 34 50 60 70
-    source_labels = [7, 9]
-    target_label = 3
+    source_labels = [7]
+    target_label = 1
     # byzantine比例
     byzantine_proportion = 0.2
     # top k sims
     top_proportion = 0.2
-    # drop out proportion
-    drop_out_proportion = 0.2
     # 每轮随机挑选的client数量
     m = max(int(args.frac * args.num_users), 1)
     torch.manual_seed(args.seed)

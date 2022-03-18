@@ -38,7 +38,7 @@ if __name__ == "__main__":
     source_labels = [7]
     target_label = 1
     # drop out proportion
-    drop_out_proportion = 0.2
+    drop_out_proportion = 0.3
     # 每轮随机挑选的client数量
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
@@ -55,6 +55,13 @@ if __name__ == "__main__":
         trans_mnist = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
         dataset_train = datasets.MNIST('./data/mnist/', train=True, download=True, transform=trans_mnist)
         dataset_test = datasets.MNIST('./data/mnist/', train=False, download=True, transform=trans_mnist)
+        # 极端的情况，用来测试是否需要浅拟合阶段
+        # dict_users = {}
+        # for i in range(args.num_users):
+        #     if i < args.num_attackers:
+        #         dict_users[i] = mnist_one_label_select(dataset_train, source_labels[0], 3000)
+        #     else:
+        #         dict_users[i] = mnist_one_label_select(dataset_train, i - args.num_attackers, 3000)
         # sample users
         if args.iid:
             iid_part = MNISTPartitioner(dataset_train.targets,
@@ -72,6 +79,7 @@ if __name__ == "__main__":
                 for idx in range(args.num_attackers):
                     dict_users[idx] = np.append(dict_users[idx], mnist_one_label_select(dataset_train, source_labels[0],
                                                                                         int(len(dict_users[idx]) / 5)))
+        # end
     elif args.dataset == 'cifar':
         trans_cifar = transforms.Compose(
             [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
@@ -88,9 +96,10 @@ if __name__ == "__main__":
     shared_dataset_test_idx = random_select_on_dict_users(dict_users)
     # rebalance的训练集，每个类的数据量为100，rebalance_train_set_idx[i]用于对第i标签补偿训练
     # rebalance_train_set_idx = mnist_noniid_designed(dataset_train, [[i] for i in range(10)], 100)
-    rebalance_cls = []
-    rebalance_cls.append([i for i in range(10)])
-    rebalance_train_set_idx = mnist_noniid_designed(dataset_train, rebalance_cls, 1000)
+
+    # rebalance_cls = []
+    # rebalance_cls.append([i for i in range(10)])
+    # rebalance_train_set_idx = mnist_noniid_designed(dataset_train, rebalance_cls, 1000)
 
     img_size = dataset_train[0][0].shape
 
@@ -135,6 +144,7 @@ if __name__ == "__main__":
     for t in range(args.num_users):
         loss_per_client[t] = []
     print("Aggregation over all clients")
+    print(f"adv_seed{args.seed}_alpha{args.dir_alpha}")
     # 全局weight，w_overfits[idx]为idx的weight，只保存最近一轮的weight，注意len为num_users
     w_overfits = [w_glob for i in range(args.num_users)]
     net.train()
@@ -146,24 +156,36 @@ if __name__ == "__main__":
                                   args.data_poisoning == "all"])
         w_overfits[idx] = copy.deepcopy(w)
     # 计算w_overfits之间的cos相似度
+    w_delta = [w_overfits[i][kind].view(1, -1) - w_glob[kind].view(1, -1) for i in range(args.num_users)]
     sims = np.zeros((args.num_users, args.num_users))
     for x in range(args.num_users):
         for y in range(0, x + 1):
             if x == y:
                 sims[x][y] = 1.0
             else:
-                cosim = torch.cosine_similarity(w_overfits[x][kind].view(1, -1), w_overfits[y][kind].view(1, -1))
+                cosim = torch.cosine_similarity(w_delta[x], w_delta[y])
                 sims[x][y] = sims[y][x] = cosim.item()
     # 参数
     top_proportion = 0.2
     # sims[x]从大到小排序
     sims_order = -np.sort(-sims, axis=1)
-    sims_top_sum = np.sum(sims_order[:, : int(top_proportion * args.num_users)],
+    sims_top_sum = np.sum(sims_order[:, : int(top_proportion * args.num_users) + 1],
                           axis=1)
-    sts_min = np.min(sims_top_sum)
+    # new
+    sims_top_sum[sims_top_sum < 0] = 0
     sts_max = np.max(sims_top_sum)
-    sims_top_sum = sts_max - sims_top_sum
-    contribution = np.exp(sims_top_sum / (sts_max - sts_min) - 1)
+    sims_top_sum /= sts_max
+    p = 10
+    sigmoid = 1 / (1 + np.exp(-p * sims_top_sum))
+    contribution = 1 - 2 * np.abs(sigmoid - 1 / 2)
+    # new end
+
+    # sts_min = np.min(sims_top_sum)
+    # sts_max = np.max(sims_top_sum)
+    # sims_top_sum = sts_max - sims_top_sum
+    # contribution = np.exp(5 * (sims_top_sum / (sts_max - sts_min) - 1))
+
+    # contribution = sims_top_sum ** 2
     # 全局weight，w_locals[idx]为最近一轮idx序号的weight，只保存最近一轮的weight，这时的len为m
     w_locals = [w_glob for i in range(args.num_users)]
     # fed训练
@@ -203,6 +225,11 @@ if __name__ == "__main__":
         drop_out_idxs = np.argsort(f_scores)[::-1][:int(drop_out_proportion * args.num_users)]
         contribution[drop_out_idxs] = 0
         contribution /= np.sum(contribution)
+        # 移除浅拟合阶段测试
+        # print("移除浅拟合测试")
+        # contribution[contribution > 0] = 1
+        # contribution /= np.sum(contribution)
+        # end
         # 更新全局model
         for k in w_glob.keys():
             w_glob[k] = 0
@@ -211,14 +238,14 @@ if __name__ == "__main__":
                 w_glob[k] += contribution[i] * w_locals[i][k]
         net.load_state_dict(w_glob)
         # rebalance
-        re_update = LocalUpdate(args=args, dataset=dataset_train, idxs=rebalance_train_set_idx[0], local_ep=1,
-                                local_bs=16)
-        w, loss = re_update.train(net=copy.deepcopy(net).to(args.device),
-                                  data_poisoning_mp=None)
+        # re_update = LocalUpdate(args=args, dataset=dataset_train, idxs=rebalance_train_set_idx[0], local_ep=1,
+        #                         local_bs=16)
+        # w, loss = re_update.train(net=copy.deepcopy(net).to(args.device),
+        #                           data_poisoning_mp=None)
+        # w_glob = w
+        # net.load_state_dict(w_glob)
         # rebalance end
-        w_glob = w
         # w_glob = FedAvg(w_locals)
-        net.load_state_dict(w_glob)
         # print loss
         loss_avg = sum(loss_locals) / len(loss_locals)
         print('Round {:3d}, Average loss {:.3f}'.format(iter, loss_avg))
@@ -233,16 +260,22 @@ if __name__ == "__main__":
     acc_list = [round(float(item) / 100, 3) for item in acc_list]
 
     asr_list = [round(float(item) / 100, 5) for item in asr_list]
+    prefix = "adv_"
     # # save loss list
     # record_datalist(loss_train_list,
-    #                 generate_name(args.seed, args.num_users, args.frac, args.epochs, args.data_poisoning,
-    #                               args.model_poisoning, args.iid, args.model, args.dataset, "loss"))
+    #                 generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
+    #                               args.data_poisoning,
+    #                               args.model_poisoning, args.model, args.dataset, "loss", args.dir_alpha))
     # # save acc list
-    # record_datalist(acc_list, generate_name(args.seed, args.num_users, args.frac, args.epochs, args.data_poisoning,
-    #                                         args.model_poisoning, args.iid, args.model, args.dataset, "acc"))
+    # record_datalist(acc_list,
+    #                 generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
+    #                               args.data_poisoning,
+    #                               args.model_poisoning, args.model, args.dataset, "acc", args.dir_alpha))
     # # save asr list
-    # record_datalist(asr_list, generate_name(args.seed, args.num_users, args.frac, args.epochs, args.data_poisoning,
-    #                                         args.model_poisoning, args.iid, args.model, args.dataset, "asr"))
+    # record_datalist(asr_list,
+    #                 generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
+    #                               args.data_poisoning,
+    #                               args.model_poisoning, args.model, args.dataset, "asr", args.dir_alpha))
 
     # plot loss curve
     plt.figure()

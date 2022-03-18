@@ -34,7 +34,7 @@ if __name__ == "__main__":
     source_labels = [7]
     target_label = 1
     # drop out proportion
-    drop_out_proportion = 0.2
+    drop_out_proportion = 0.3
     # data verification阶段，相似度前gamma比例的不被选取
     gamma = 0.2
     # data verification阶段，随机选取的范围长度
@@ -135,13 +135,14 @@ if __name__ == "__main__":
                                   args.data_poisoning == "all"])
         w_overfits[idx] = copy.deepcopy(w)
     # 计算w_overfits之间的cos相似度
+    w_delta = [w_overfits[i][kind].view(1, -1) - w_glob[kind].view(1, -1) for i in range(args.num_users)]
     sims = np.zeros((args.num_users, args.num_users))
     for x in range(args.num_users):
         for y in range(0, x + 1):
             if x == y:
                 sims[x][y] = 1.0
             else:
-                cosim = torch.cosine_similarity(w_overfits[x][kind].view(1, -1), w_overfits[y][kind].view(1, -1))
+                cosim = torch.cosine_similarity(w_delta[x], w_delta[y])
                 sims[x][y] = sims[y][x] = cosim.item()
     # 为每个client生成有序的列表, sims_in_order[x]为保存user序号的有序列表，sims_in_order[x][0]为与x最相似的user序号
     sims_in_order = []
