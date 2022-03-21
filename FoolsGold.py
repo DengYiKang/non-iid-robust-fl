@@ -63,7 +63,7 @@ if __name__ == "__main__":
             if args.data_poisoning != "none":
                 for idx in range(args.num_attackers):
                     dict_users[idx] = np.append(dict_users[idx], mnist_one_label_select(dataset_train, source_labels[0],
-                                                                                        int(len(dict_users[idx]) / 5)))
+                                                                                        int(len(dict_users[idx]) / 2)))
 
     elif args.dataset == 'cifar':
         trans_cifar = transforms.Compose(
@@ -207,21 +207,21 @@ if __name__ == "__main__":
 
     asr_list = [round(float(item) / 100, 5) for item in asr_list]
     prefix = "foolsgold_"
-    # # save loss list
-    # record_datalist(loss_train_list,
-    #                 generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
-    #                               args.data_poisoning,
-    #                               args.model_poisoning, args.model, args.dataset, "loss", args.dir_alpha))
-    # # save acc list
-    # record_datalist(acc_list,
-    #                 generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
-    #                               args.data_poisoning,
-    #                               args.model_poisoning, args.model, args.dataset, "acc", args.dir_alpha))
-    # # save asr list
-    # record_datalist(asr_list,
-    #                 generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
-    #                               args.data_poisoning,
-    #                               args.model_poisoning, args.model, args.dataset, "asr", args.dir_alpha))
+    # save loss list
+    record_datalist(loss_train_list,
+                    generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
+                                  args.data_poisoning,
+                                  args.model_poisoning, args.model, args.dataset, "loss", args.dir_alpha))
+    # save acc list
+    record_datalist(acc_list,
+                    generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
+                                  args.data_poisoning,
+                                  args.model_poisoning, args.model, args.dataset, "acc", args.dir_alpha))
+    # save asr list
+    record_datalist(asr_list,
+                    generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
+                                  args.data_poisoning,
+                                  args.model_poisoning, args.model, args.dataset, "asr", args.dir_alpha))
 
     # plot loss curve
     plt.figure()

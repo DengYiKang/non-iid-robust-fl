@@ -7,6 +7,24 @@ import numpy as np
 from torchvision import datasets, transforms
 
 
+def mnist_one_client_from_designed_frequence(dataset, frequence, size):
+    """
+    返回一个user的data index，各类的数量由frequence决定
+    :param dataset:
+    :param frequence:
+    :param size:
+    :return:
+    """
+    targets = dataset.targets.numpy()
+    idxs = np.array([], dtype='int64')
+    for i in range(10):
+        if frequence[i] > 0:
+            label_idxs = list(np.where(targets == i))[0]
+            sample_size = int(size * frequence[i])
+            idxs = np.concatenate((idxs, np.random.choice(label_idxs, sample_size, replace=False)), axis=0)
+    return idxs
+
+
 def random_select_on_dict_users(dict_users):
     """
     从dict_users所指定的idxs中随机选出十分之一的sample

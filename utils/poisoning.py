@@ -11,10 +11,10 @@ def add_attack(w, attack):
     """
     if attack == "same value":
         for k in w.keys():
-            w[k][:] = -1
+            w[k][:] = 100
     elif attack == "sign flipping":
         for k in w.keys():
-            w[k] = w[k] / -1
+            w[k] = w[k] * -1
     elif attack == "gaussian noisy":
         for k in w.keys():
             mean = 0

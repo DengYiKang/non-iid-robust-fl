@@ -65,7 +65,7 @@ if __name__ == "__main__":
             if args.data_poisoning != "none":
                 for idx in range(args.num_attackers):
                     dict_users[idx] = np.append(dict_users[idx], mnist_one_label_select(dataset_train, source_labels[0],
-                                                                                        int(len(dict_users[idx]) / 5)))
+                                                                                        int(len(dict_users[idx]) / 2)))
     elif args.dataset == 'cifar':
         trans_cifar = transforms.Compose(
             [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
@@ -145,11 +145,12 @@ if __name__ == "__main__":
                     w_locals[i] = add_attack(w_locals[i], GAUSSIAN_NOISY_ATTACK)
                 else:
                     pass
-        if args.benchmark == "0":
+        if args.benchmark == "1":
             w_glob = krum(w_locals=w_locals, args=args, kind=kind, byzantine_proportion=0.3, m=args.num_users)
-            # w_glob = trimmedMean(w_locals=w_locals, args=args, kind=kind, alpha=0.1, m=m)
         elif args.benchmark == "2":
-            w_glob = geoMed(w_locals=w_locals, args=args, kind=kind, groups=1)
+            w_glob = geoMed(w_locals=w_locals, args=args, kind=kind, groups=args.num_users)
+        elif args.benchmark == "3":
+            w_glob = trimmedMean(w_locals=w_locals, args=args, kind=kind, alpha=0.2, m=args.num_users)
         else:
             w_glob = FedAvg(w_locals)
         net.load_state_dict(w_glob)
@@ -168,8 +169,12 @@ if __name__ == "__main__":
 
     asr_list = [round(float(item) / 100, 5) for item in asr_list]
     prefix = ""
-    if args.benchmark == "2":
+    if args.benchmark == "1":
+        prefix = "krum_"
+    elif args.benchmark == "2":
         prefix = "rfa_"
+    elif args.benchmark == "3":
+        prefix = "trimmedMean_"
     else:
         prefix = "fedavg_"
     # save loss list

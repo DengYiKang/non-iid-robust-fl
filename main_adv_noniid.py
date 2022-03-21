@@ -74,11 +74,11 @@ if __name__ == "__main__":
                                                     dir_alpha=args.dir_alpha,
                                                     seed=args.seed)
             dict_users = noniid_labeldir_part.client_dict
-            # 对异常客户端注入百分之二十的source label，避免无数据可毒的情况
+            # 对异常客户端注入百分之五十的source label，避免无数据可毒的情况
             if args.data_poisoning != "none":
                 for idx in range(args.num_attackers):
                     dict_users[idx] = np.append(dict_users[idx], mnist_one_label_select(dataset_train, source_labels[0],
-                                                                                        int(len(dict_users[idx]) / 5)))
+                                                                                        int(len(dict_users[idx]) / 2)))
         # end
     elif args.dataset == 'cifar':
         trans_cifar = transforms.Compose(
@@ -144,7 +144,6 @@ if __name__ == "__main__":
     for t in range(args.num_users):
         loss_per_client[t] = []
     print("Aggregation over all clients")
-    print(f"adv_seed{args.seed}_alpha{args.dir_alpha}")
     # 全局weight，w_overfits[idx]为idx的weight，只保存最近一轮的weight，注意len为num_users
     w_overfits = [w_glob for i in range(args.num_users)]
     net.train()
@@ -161,23 +160,45 @@ if __name__ == "__main__":
     for x in range(args.num_users):
         for y in range(0, x + 1):
             if x == y:
-                sims[x][y] = 1.0
+                sims[x][y] = 0.0
             else:
                 cosim = torch.cosine_similarity(w_delta[x], w_delta[y])
                 sims[x][y] = sims[y][x] = cosim.item()
     # 参数
     top_proportion = 0.2
+    print(f"adv_seed-{args.seed}, alpha-{args.dir_alpha}, top-{top_proportion}, drop-{drop_out_proportion}")
     # sims[x]从大到小排序
     sims_order = -np.sort(-sims, axis=1)
-    sims_top_sum = np.sum(sims_order[:, : int(top_proportion * args.num_users) + 1],
+    sims_top_sum = np.sum(sims_order[:, : int(top_proportion * args.num_users)],
                           axis=1)
-    # new
-    sims_top_sum[sims_top_sum < 0] = 0
-    sts_max = np.max(sims_top_sum)
-    sims_top_sum /= sts_max
-    p = 10
-    sigmoid = 1 / (1 + np.exp(-p * sims_top_sum))
-    contribution = 1 - 2 * np.abs(sigmoid - 1 / 2)
+    drop_out_idxs_top_sims = np.argsort(sims_top_sum)[::-1][:int(drop_out_proportion * args.num_users)]
+    # sims_top_sum /= int(top_proportion * args.num_users)
+    # contribution = 1 - sims_top_sum
+    # contribution[contribution > 1] = 1
+    # contribution[contribution < 0] = 0
+    # contribution = contribution / np.max(contribution)
+    # contribution[(contribution == 1)] = .99
+    # # logit
+    # contribution = (np.log(contribution / (1 - contribution)) + 0.5)
+    # contribution[(np.isinf(contribution) + contribution > 1)] = 1
+    # contribution[(contribution < 0)] = 0
+    # # 额外追加归一化
+    # contribution = contribution / np.sum(contribution)
+
+    # sims_top_sum[sims_top_sum < 0] = 0
+    # sts_max = np.max(sims_top_sum)
+    # 正则化到01区间
+    # sims_top_sum /= sts_max
+    # sims_top_sum = 1 - sims_top_sum
+    # sims_top_sum[(sims_top_sum == 1)] = .99
+    # contribution = (np.log(sims_top_sum / (1 - sims_top_sum)) + 0.5)
+    # contribution[(np.isinf(contribution) + contribution > 1)] = 1
+    # contribution[(contribution < 0)] = 0
+    # contribution = contribution / np.sum(contribution)
+    # sigmoid
+    # p = 20
+    # sigmoid = 1 / (1 + np.exp(-p * sims_top_sum))
+    # contribution = 1 - 2 * np.abs(sigmoid - 1 / 2)
     # new end
 
     # sts_min = np.min(sims_top_sum)
@@ -222,20 +243,24 @@ if __name__ == "__main__":
                                             {True: data_poisoning_mp_list[i], False: None}[
                                                 args.data_poisoning == "all"])
             f_scores.append(test_loss)
-        drop_out_idxs = np.argsort(f_scores)[::-1][:int(drop_out_proportion * args.num_users)]
-        contribution[drop_out_idxs] = 0
-        contribution /= np.sum(contribution)
-        # 移除浅拟合阶段测试
-        # print("移除浅拟合测试")
-        # contribution[contribution > 0] = 1
-        # contribution /= np.sum(contribution)
-        # end
+        f_scores = np.array(f_scores)
+        f_median = np.median(f_scores, axis=0)
+        f_min = np.min(f_scores)
+        f_threshold = 2 * f_median - f_min
+        # drop_out_idxs_loss = np.argsort(f_scores)[::-1][:int(drop_out_proportion * args.num_users)]
+        drop_out_idxs_loss = np.where(f_scores > f_threshold)
+        drop_out_idxs_loss = np.resize(drop_out_idxs_loss, (np.size(drop_out_idxs_loss),))
+        drop_out_idxs = np.union1d(drop_out_idxs_top_sims, drop_out_idxs_loss)
+        wv = [1 for i in range(args.num_users)]
+        wv = np.array(wv, 'float32')
+        wv[drop_out_idxs] = 0.0
+        wv /= np.sum(wv)
         # 更新全局model
         for k in w_glob.keys():
             w_glob[k] = 0
         for i in range(args.num_users):
             for k in w_glob.keys():
-                w_glob[k] += contribution[i] * w_locals[i][k]
+                w_glob[k] += wv[i] * w_locals[i][k]
         net.load_state_dict(w_glob)
         # rebalance
         # re_update = LocalUpdate(args=args, dataset=dataset_train, idxs=rebalance_train_set_idx[0], local_ep=1,
@@ -260,22 +285,22 @@ if __name__ == "__main__":
     acc_list = [round(float(item) / 100, 3) for item in acc_list]
 
     asr_list = [round(float(item) / 100, 5) for item in asr_list]
-    prefix = "adv_"
+    prefix = "ours_"
     # # save loss list
-    # record_datalist(loss_train_list,
-    #                 generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
-    #                               args.data_poisoning,
-    #                               args.model_poisoning, args.model, args.dataset, "loss", args.dir_alpha))
-    # # save acc list
-    # record_datalist(acc_list,
-    #                 generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
-    #                               args.data_poisoning,
-    #                               args.model_poisoning, args.model, args.dataset, "acc", args.dir_alpha))
-    # # save asr list
-    # record_datalist(asr_list,
-    #                 generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
-    #                               args.data_poisoning,
-    #                               args.model_poisoning, args.model, args.dataset, "asr", args.dir_alpha))
+    record_datalist(loss_train_list,
+                    generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
+                                  args.data_poisoning,
+                                  args.model_poisoning, args.model, args.dataset, "loss", args.dir_alpha))
+    # save acc list
+    record_datalist(acc_list,
+                    generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
+                                  args.data_poisoning,
+                                  args.model_poisoning, args.model, args.dataset, "acc", args.dir_alpha))
+    # save asr list
+    record_datalist(asr_list,
+                    generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
+                                  args.data_poisoning,
+                                  args.model_poisoning, args.model, args.dataset, "asr", args.dir_alpha))
 
     # plot loss curve
     plt.figure()
