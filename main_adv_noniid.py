@@ -37,6 +37,10 @@ if __name__ == "__main__":
     # [7, 9] 3
     source_labels = [7]
     target_label = 1
+    if args.source_label != -1:
+        source_labels = [args.source_label]
+    if args.target_label != -1:
+        target_label = args.target_label
     # drop out proportion
     drop_out_proportion = 0.3
     # 每轮随机挑选的client数量
@@ -286,7 +290,7 @@ if __name__ == "__main__":
 
     asr_list = [round(float(item) / 100, 5) for item in asr_list]
     prefix = "ours_"
-    # # save loss list
+    # save loss list
     record_datalist(loss_train_list,
                     generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
                                   args.data_poisoning,
@@ -301,6 +305,11 @@ if __name__ == "__main__":
                     generate_name(prefix, args.seed, args.num_users, args.num_attackers, args.frac, args.epochs,
                                   args.data_poisoning,
                                   args.model_poisoning, args.model, args.dataset, "asr", args.dir_alpha))
+    # filename = f"./new_result/source_target/seed{args.seed}_alpha{args.dir_alpha}"
+    # file = open(filename, mode='a')
+    # file.write(f"source-{source_labels[0]}, target-{target_label}, asr={asr_list[-1]}\n")
+    # file.flush()
+    # file.close()
 
     # plot loss curve
     plt.figure()

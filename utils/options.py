@@ -55,6 +55,10 @@ def args_parser():
     # Dirichlet Distribution
     parser.add_argument('--dir_alpha', type=float, default=1, help="Dirichlet")
 
+    # 测试source label和target label的排列组合
+    parser.add_argument('--source_label', type=int, default=-1, help="source label")
+    parser.add_argument('--target_label', type=int, default=-1, help="target label")
+
     # index
     parser.add_argument('--index', type=int, default=0, help="index of something")
     parser.add_argument('--class_idx', type=int, default=0, help="generate data for clustering")
