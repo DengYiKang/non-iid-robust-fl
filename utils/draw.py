@@ -28,7 +28,7 @@ def plot(files):
     result = "acc"
     seed = 20
     alpha = 10.0
-    attack_model = "SameValue"
+    attack_model = "GaussianNoisy"
     plt.savefig(f"../imgs/{result}_seed{seed}_alpha{alpha}_{attack_model}.svg")
     plt.close()
 
@@ -41,12 +41,12 @@ if __name__ == "__main__":
     # fedavg_seed30_user20_attackers6_frac1_epochs100_dpnone_mpsign_flipping_modelmlp_datasetmnist_alpha0.5.txt
     files = []
     files.append(
-        "../new_result/acc/fedavg_seed20_user20_attackers6_frac1_epochs100_dpnone_mpsame_value_modelmlp_datasetmnist_alpha10.0.txt")
+        "../new_result/acc/fedavg_seed20_user20_attackers6_frac1_epochs100_dpnone_mpgaussian_noisy_modelmlp_datasetmnist_alpha10.0.txt")
     files.append(
-        "../new_result/acc/krum_seed20_user20_attackers6_frac1_epochs100_dpnone_mpsame_value_modelmlp_datasetmnist_alpha10.0.txt")
+        "../new_result/acc/krum_seed20_user20_attackers6_frac1_epochs100_dpnone_mpgaussian_noisy_modelmlp_datasetmnist_alpha10.0.txt")
     files.append(
-        "../new_result/acc/rfa_seed20_user20_attackers6_frac1_epochs100_dpnone_mpsame_value_modelmlp_datasetmnist_alpha10.0.txt")
+        "../new_result/acc/rfa_seed20_user20_attackers6_frac1_epochs100_dpnone_mpgaussian_noisy_modelmlp_datasetmnist_alpha10.0.txt")
     files.append(
-        "../new_result/acc/ours_seed20_user20_attackers6_frac1_epochs100_dpnone_mpsame_value_modelmlp_datasetmnist_alpha10.0.txt")
+        "../new_result/acc/ours_seed20_user20_attackers6_frac1_epochs100_dpnone_mpgaussian_noisy_modelmlp_datasetmnist_alpha10.0.txt")
     plot(files)
     # plot("../result/acc/seed50_user100_frac0.1_epochs200_dpall_mpnone_modelmlp_datasetmnist_iidFalse.txt")

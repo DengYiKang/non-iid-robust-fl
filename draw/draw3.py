@@ -4,23 +4,27 @@ import numpy as np
 
 if __name__ == "__main__":
     # plt.figure(figsize=(13, 4))
-    seed = 20
-    alpha = 10
+    seed = 10
+    alpha = 0.05
     plt.figure()
     ax = plt.subplot(111)
     # 构造x轴刻度标签、数据
-    labels = ['FedAvg', 'RFA', 'FoolsGold', 'RFL-PA(ours)']
-    # acc = [79.6, 78.1, 72.7, 85.6]
-    # asr = [90.6, 82.6, 0.5, 0.5]
+    labels = ['FedAvg', 'RFA', 'FoolsGold', 'RFL-DA(ours)']
+    # 10 0.05
+    acc = [79.6, 78.1, 72.7, 85.6]
+    asr = [90.6, 82.6, 0.5, 0.5]
 
+    # 30 0.5
     # acc = [92.5, 91.9, 95.1, 94.9]
     # asr = [29.9, 35.5, 1.56, 3.4]
 
+    # 60 1
     # acc = [93.5, 94.7, 84.9, 94.4]
     # asr = [18.7, 6.7, 2.1, 5.4]
 
-    acc = [95.4, 95.8, 95.9, 95.8]
-    asr = [8.1, 4.0, 1.2, 1.1]
+    # 20 10
+    # acc = [95.4, 95.8, 95.9, 95.8]
+    # asr = [8.1, 4.0, 1.2, 1.1]
 
     # third = [21, 31, 37, 21, 28]
     # fourth = [26, 31, 35, 27, 21]
