@@ -109,7 +109,7 @@ def mnist_test(net_g, dataset, args, source_labels, target_label):
 
     test_loss /= len(data_loader.dataset)
     accuracy = 100.00 * correct / len(data_loader.dataset)
-    print(f"cnt_mislabel: {cnt_mislabel}, cnt_source: {cnt_source}, acc: {accuracy}")
+    # print(f"cnt_mislabel: {cnt_mislabel}, cnt_source: {cnt_source}, acc: {accuracy}")
     asr = 100.00 * cnt_mislabel / cnt_source
     if args.verbose:
         print(
